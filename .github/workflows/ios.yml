@@ -23,7 +23,7 @@ jobs:
       run:
         working-directory: ios
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Toolchain
         run: |
@@ -67,7 +67,7 @@ jobs:
           (cd ipa && zip -qry ../RIVEM-unsigned.ipa Payload)
           ls -la RIVEM-unsigned.ipa
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: RIVEM-unsigned-ipa
           path: ios/RIVEM-unsigned.ipa
@@ -75,7 +75,7 @@ jobs:
       - name: Simulator smoke run + on-device self-check
         run: bash ci/simulator-tests.sh "$UDID" build-sim/Build/Products/Release-iphonesimulator/RIVEM.app
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: ios-simulator-screenshots-and-logs

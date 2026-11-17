@@ -16,8 +16,8 @@ public enum Homography {
             throw RiverCoreError.degenerateGeometry("hay puntos alineados: no definen un plano")
         }
 
-        let (tp, np) = try normalization(pixel)
-        let (tw, nw) = try normalization(world)
+        let (tp, np, _) = try normalization(pixel)
+        let (_, nw, twInverse) = try normalization(world)
 
         // Unknowns h11..h32 with h33 = 1 on normalised coordinates. Each point gives two equations.
         var rows: [[Double]] = []
@@ -32,7 +32,7 @@ public enum Homography {
         let h = try LinearSolver.leastSquares(rows, rhs)
         let hn = Matrix3(rowMajor: h + [1])
         // Undo the normalisations: H = Tw⁻¹ · Hn · Tp
-        return (try tw.inverse() * hn * tp).normalized()
+        return (twInverse * hn * tp).normalized()
     }
 
     /// Distance, in real-world units, between each control point's known coordinates and where `matrix`
@@ -41,8 +41,9 @@ public enum Homography {
         zip(pixel, world).map { matrix.apply($0).distance(to: $1) }
     }
 
-    /// Similarity that moves the centroid to the origin and the mean distance to √2.
-    static func normalization(_ pts: [Point2]) throws -> (Matrix3, [Point2]) {
+    /// Similarity that moves the centroid to the origin and the mean distance to √2, the normalised points,
+    /// and the exact inverse of that similarity (built in closed form, no numerical inversion).
+    static func normalization(_ pts: [Point2]) throws -> (Matrix3, [Point2], Matrix3) {
         let n = Double(pts.count)
         let cx = pts.reduce(0) { $0 + $1.x } / n
         let cy = pts.reduce(0) { $0 + $1.y } / n
@@ -50,7 +51,8 @@ public enum Homography {
         guard meanDist > 0 else { throw RiverCoreError.degenerateGeometry("todos los puntos coinciden") }
         let s = 2.0.squareRoot() / meanDist
         let t = Matrix3(rowMajor: [s, 0, -s * cx, 0, s, -s * cy, 0, 0, 1])
-        return (t, pts.map { Point2(s * ($0.x - cx), s * ($0.y - cy)) })
+        let inverse = Matrix3(rowMajor: [1 / s, 0, cx, 0, 1 / s, cy, 0, 0, 1])
+        return (t, pts.map { Point2(s * ($0.x - cx), s * ($0.y - cy)) }, inverse)
     }
 
     /// True when every point lies (numerically) on one line, i.e. the set cannot define a homography.

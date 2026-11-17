@@ -64,9 +64,11 @@ public struct Matrix3: Equatable, Codable, Sendable {
     }
 
     public func inverse() throws -> Matrix3 {
+        // No threshold relative to the largest element: georeferencing matrices mix ~1e-5 terms with UTM
+        // translations of ~1e7, so such a test rejects perfectly invertible matrices. Exact singularity or a
+        // non-finite result is what we reject.
         let det = determinant
-        let scale = m.map(abs).max() ?? 0
-        guard scale > 0, abs(det) > 1e-14 * scale * scale * scale else { throw RiverCoreError.singularMatrix }
+        guard det != 0, det.isFinite else { throw RiverCoreError.singularMatrix }
         let c00 = m[4] * m[8] - m[5] * m[7]
         let c01 = m[2] * m[7] - m[1] * m[8]
         let c02 = m[1] * m[5] - m[2] * m[4]
@@ -76,7 +78,9 @@ public struct Matrix3: Equatable, Codable, Sendable {
         let c20 = m[3] * m[7] - m[4] * m[6]
         let c21 = m[1] * m[6] - m[0] * m[7]
         let c22 = m[0] * m[4] - m[1] * m[3]
-        return Matrix3(rowMajor: [c00, c01, c02, c10, c11, c12, c20, c21, c22].map { $0 / det })
+        let inv = [c00, c01, c02, c10, c11, c12, c20, c21, c22].map { $0 / det }
+        guard inv.allSatisfy(\.isFinite) else { throw RiverCoreError.singularMatrix }
+        return Matrix3(rowMajor: inv)
     }
 
     /// Scales the matrix so that m[2,2] == 1 (the usual normalisation for homographies).
