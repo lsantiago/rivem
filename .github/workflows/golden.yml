@@ -1,0 +1,60 @@
+name: Golden references (RIVeR desktop)
+
+# Runs RIVeR's own Python core (oruscam/RIVeR at the commit RIVEM is compatible with) on RIVeR's public examples
+# and uploads the results as the artifact `golden-references`. Download it and copy its contents to
+# ci/testdata/golden/ to update the references RiverCore's tests compare against.
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ["tools/golden/**", ".github/workflows/golden.yml"]
+
+concurrency:
+  group: golden-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  RIVER_REPO: https://github.com/oruscam/RIVeR.git
+  RIVER_COMMIT: ea65612 # RIVeR 3.8.3
+
+jobs:
+  golden:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Fetch RIVeR at the pinned commit
+        run: |
+          git clone --filter=blob:none --no-checkout "$RIVER_REPO" upstream
+          git -C upstream checkout "$RIVER_COMMIT"
+          git -C upstream log -1 --format='%h %s'
+
+      - name: Install RIVeR (CPU-only torch first, as RIVeR's own CI does)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install ./upstream
+          python -c "import river, cv2, numpy; print('river', river.__version__, 'cv2', cv2.__version__, 'numpy', numpy.__version__)"
+
+      - name: Generate references
+        run: python tools/golden/run_all.py --examples upstream/examples --out golden-out
+
+      - name: Summary
+        if: always()
+        run: |
+          cat golden-out/report.json || true
+          find golden-out -type f | sort
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: golden-references
+          path: golden-out/
