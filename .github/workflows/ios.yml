@@ -1,0 +1,93 @@
+name: iOS CI
+
+on:
+  push:
+    paths: ["ios/**", "ci/**", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["ios/**", "ci/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # attach the IPA to a GitHub Release on tags
+
+jobs:
+  build:
+    name: Tests, simulator run, unsigned IPA
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen and generate the Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Pick an iPhone simulator
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+          echo "Using simulator $UDID"
+          xcrun simctl list devices available | grep "$UDID"
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: Unit tests (RiverCore, iOS simulator)
+        run: |
+          set -o pipefail
+          xcodebuild test -project RIVEM.xcodeproj -scheme RIVEM \
+            -destination "id=$UDID" -derivedDataPath build-test \
+            -resultBundlePath RiverCoreTests.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log | tail -60
+
+      - name: Build for simulator (Release)
+        run: |
+          set -o pipefail
+          xcodebuild build -project RIVEM.xcodeproj -scheme RIVEM -configuration Release \
+            -destination "id=$UDID" -derivedDataPath build-sim CODE_SIGNING_ALLOWED=NO 2>&1 | tee build-sim.log | tail -30
+
+      - name: Build unsigned device IPA (Release)
+        run: |
+          set -o pipefail
+          xcodebuild build -project RIVEM.xcodeproj -scheme RIVEM -configuration Release \
+            -sdk iphoneos -destination "generic/platform=iOS" -derivedDataPath build-dev \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" 2>&1 | tee build-dev.log | tail -30
+          mkdir -p ipa/Payload
+          cp -R build-dev/Build/Products/Release-iphoneos/RIVEM.app ipa/Payload/
+          (cd ipa && zip -qry ../RIVEM-unsigned.ipa Payload)
+          ls -la RIVEM-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RIVEM-unsigned-ipa
+          path: ios/RIVEM-unsigned.ipa
+
+      - name: Simulator smoke run + on-device self-check
+        run: bash ci/simulator-tests.sh "$UDID" build-sim/Build/Products/Release-iphonesimulator/RIVEM.app
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-simulator-screenshots-and-logs
+          path: |
+            ios/screenshots/
+            ios/RiverCoreTests.xcresult
+            ios/test.log
+            ios/build-sim.log
+            ios/build-dev.log
+
+      - name: Attach IPA to the release (tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ios/RIVEM-unsigned.ipa

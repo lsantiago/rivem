@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>RIVEM</string>
+    <key>NSCameraUsageDescription</key>
+    <string>La cámara graba el video del río para medir la velocidad superficial y el caudal en el dispositivo.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>La ubicación se guarda con cada aforo para saber dónde se midió.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Elige un video del río de tu fototeca para analizarlo en el dispositivo.</string>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <!-- Projects live in Documents and are visible in the Files app, so they can be copied to and from
+         RIVeR desktop (same folder format). -->
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
+</dict>
+</plist>

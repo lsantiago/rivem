@@ -1,0 +1,12 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+screenshots/
+.claude/
+.DS_Store
+*.pth
+*.onnx
+__pycache__/

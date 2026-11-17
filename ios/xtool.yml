@@ -1,0 +1,4 @@
+version: 1
+bundleID: com.rivem.app
+product: RIVEM
+infoPath: Info.plist
