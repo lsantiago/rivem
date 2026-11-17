@@ -43,16 +43,45 @@ enum SelfCheck {
 }
 
 /// CI hook: `simctl launch … -autotest_selfcheck 1` writes the self-check results to Documents and an
-/// `autotest_done` file containing `ok` or `fail` (read by ios/ci/simulator-tests.sh).
+/// `autotest_done` file containing `ok` or `fail` (read by ios/ci/simulator-tests.sh). Every project found in the
+/// workspace (the CI copies a desktop fixture there) is opened and checked too.
 enum Autotest {
     @MainActor
-    static func runIfRequested() async {
+    static func runIfRequested(workspace: Workspace) async {
         guard UserDefaults.standard.bool(forKey: "autotest_selfcheck") else { return }
-        let results = SelfCheck.run()
+        var lines = SelfCheck.run().map { "\($0.passed ? "PASS" : "FAIL") \($0.name): \($0.detail)" }
+        workspace.reload()
+        for summary in workspace.projects {
+            lines.append(projectLine(summary))
+        }
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let summary = results.map { "\($0.passed ? "PASS" : "FAIL") \($0.name): \($0.detail)" }.joined(separator: "\n")
-        try? summary.write(to: docs.appendingPathComponent("autotest_summary.txt"), atomically: true, encoding: .utf8)
-        let status = results.allSatisfy(\.passed) ? "ok" : "fail"
+        try? lines.joined(separator: "\n").write(to: docs.appendingPathComponent("autotest_summary.txt"), atomically: true, encoding: .utf8)
+        let status = lines.allSatisfy { $0.hasPrefix("PASS") } ? "ok" : "fail"
         try? status.write(to: docs.appendingPathComponent("autotest_done"), atomically: true, encoding: .utf8)
+    }
+
+    /// Opens the project and checks that its matrix sends each section's pixel end points to the stored real-world
+    /// coordinates (desktop stores them rounded to the centimetre).
+    private static func projectLine(_ summary: ProjectSummary) -> String {
+        let label = "proyecto \(summary.name)/\(summary.stamp)"
+        do {
+            let p = try RiverProject.open(summary.folder)
+            let issues = p.compatibilityIssues()
+            let sections = try p.readCrossSections()?.sections ?? []
+            var worst = 0.0
+            if let m = try p.readMatrix() {
+                for s in sections {
+                    for (px, w) in [(s.pixelLeft, s.worldLeft), (s.pixelRight, s.worldRight)] {
+                        if let px, let w { worst = max(worst, m.apply(px).distance(to: w)) }
+                    }
+                }
+            }
+            let ok = issues.isEmpty && worst < 0.01
+            return "\(ok ? "PASS" : "FAIL") \(label): \(p.settings.footage?.rawValue ?? "?"), \(sections.count) secciones, "
+                + "\(issues.count) problemas de compatibilidad, error matriz \(String(format: "%.4f", worst)) m"
+                + (issues.isEmpty ? "" : " [\(issues.map(\.message).joined(separator: "; "))]")
+        } catch {
+            return "FAIL \(label): \(error)"
+        }
     }
 }

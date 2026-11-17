@@ -16,8 +16,8 @@
 
 | Fase | Contenido | Criterio de "hecho" |
 |---|---|---|
-| **F0** Infraestructura | Estructura del repo, `RiverCore` con geometría base, app mínima con autocomprobación, `ios.yml` (tests + simulador + IPA) | La app abre en el iPhone 14 Pro con la autocomprobación en verde |
-| **F1** Formato y referencias | Modelos `Codable` de `settings.json`, `xsections.json`, `transformation.json`, `piv_results.json`; lectura/escritura compatible; `tools/generate_golden.py` | Un proyecto de ejemplo de escritorio se abre en la app y se reescribe sin cambios de significado |
+| **F0** Infraestructura ✅ | Estructura del repo, `RiverCore` con geometría base, app mínima con autocomprobación, `ios.yml` (tests + simulador + IPA) | La app abre en el iPhone 14 Pro con la autocomprobación en verde (17-11-2026) |
+| **F1** Formato y referencias | `RiverCore/Project`: JSON con orden de claves, enteros y `NaN`; `settings.json`, `xsections.json`, `transformation_matrix.json`, `piv_results.json`, batimetría; carpeta de proyecto (abrir, crear, reubicar rutas, invalidar al cambiar la matriz, chequeo de compatibilidad). App: lista de aforos en Archivos, importar proyecto, detalle. Referencias: ejemplos de RIVeR en `ci/testdata/river-examples` | Un proyecto de escritorio se abre en la app y se reescribe sin cambios de significado. `tools/generate_golden.py` pasa a F2/F3, cuando haya cálculos que comparar |
 | **F2** Geometría completa | Oblicua con 4 puntos + 6 distancias (trilateración), rectificación 3D con cámara (DLT de 11 parámetros), ROI, rectificación de imagen | Errores de reproyección iguales a escritorio en los ejemplos |
 | **F3** PIV | Lectura de frames (AVAssetReader en la app, buffers al núcleo), correlación FFT multipasada, subpíxel gaussiano en coma flotante, filtros | Desplazamiento sintético conocido recuperado con error < 0,05 px; campos de ejemplo dentro de tolerancia |
 | **F4** Sección y caudal | Batimetría (CSV), estaciones, alpha, método de sección media, área/ancho con cruces del nivel de agua, incertidumbre coherente | Caudal de los ejemplos igual a la referencia corregida |

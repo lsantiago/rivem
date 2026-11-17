@@ -9,7 +9,7 @@ import Foundation
 ///   (see `docs/PLAN.md`, section "Errores de RIVeR corregidos").
 public enum RiverCore {
     /// Version of this core.
-    public static let version = "0.1.0"
+    public static let version = "0.2.0"
     /// RIVeR desktop release whose project files this core reads and writes.
     public static let desktopCompatibility = "3.8.3"
 }

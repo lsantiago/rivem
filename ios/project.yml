@@ -21,8 +21,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.rivem.app
         INFOPLIST_FILE: Info.plist
         GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "2"
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.0"
     scheme:

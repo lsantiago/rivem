@@ -1,0 +1,28 @@
+{
+    "CS_default_1": {
+        "bath": "C:\\Users\\aforos\\RIVeR\\pisco\\20250310T1542\\pisco_section.csv",
+        "rw_length": 22.154173421728018,
+        "level": 1.765,
+        "left_station": 2.0,
+        "dir_xl": 49.93998201776919, "dir_yl": 935.0362603828776, "dir_xr": 1800.187546103764, "dir_yr": 687.6040640118695,
+        "dir_east_l": -1.48, "dir_north_l": 0.14, "dir_east_r": 20.67, "dir_north_r": 0.57,
+        "xl": 49.93998201776919, "yl": 935.0362603828776, "xr": 1800.187546103764, "yr": 687.6040640118695,
+        "east_l": -1.48, "north_l": 0.14, "east_r": 20.67, "north_r": 0.57,
+        "num_stations": 15,
+        "alpha": 0.85,
+        "depth": [0.0, 0.13, NaN, 1.14]
+    },
+    "Secci\u00f3n aguas abajo": {
+        "bath": "pisco_section.csv",
+        "rw_length": 22.154173421728018,
+        "level": 1.6,
+        "left_station": 0.0,
+        "dir_xl": 49.93998201776919, "dir_yl": 935.0362603828776, "dir_xr": 1800.187546103764, "dir_yr": 687.6040640118695,
+        "dir_east_l": -1.48, "dir_north_l": 0.14, "dir_east_r": 20.67, "dir_north_r": 0.57,
+        "xl": 49.93998201776919, "yl": 935.0362603828776, "xr": 1800.187546103764, "yr": 687.6040640118695,
+        "east_l": -1.48, "north_l": 0.14, "east_r": 20.67, "north_r": 0.57,
+        "num_stations": 10,
+        "alpha": 0.85
+    },
+    "summary": {"mean": {"total_Q": 4.2}}
+}
