@@ -21,9 +21,15 @@ final class JSONTests: XCTestCase {
         XCTAssertEqual(o["m"]?.objectValue?["y"], .int(15))
     }
 
+    /// The escapes are assembled at runtime (`esc` + hex) so no tool can turn them into the characters.
+    private let esc = String(UnicodeScalar(UInt8(92))) + "u"
+
     func testUnicodeEscapesAndSurrogatePairs() throws {
-        let v = try JSON.parse(#"["Río", "🌊", "a\"b\\c\n"]"#)
-        XCTAssertEqual(v, .array([.string("Río"), .string("🌊"), .string("a\"b\\c\n")]))
+        let json = "[\"R" + esc + "00edo\", \"" + esc + "d83c" + esc + "df0a\"]"
+        XCTAssertFalse(json.contains("\u{ED}"))
+        let v = try JSON.parse(json)
+        XCTAssertEqual(v, .array([.string("R\u{ED}o"), .string("\u{1F30A}")]))
+        XCTAssertEqual(try JSON.parse(#"["a\"b\\c\n"]"#), .array([.string("a\"b\\c\n")]))
     }
 
     func testBOMIsSkippedAndLatin1IsAccepted() throws {
@@ -40,8 +46,9 @@ final class JSONTests: XCTestCase {
     }
 
     func testWriterEscapesNonASCIILikePython() throws {
-        let text = String(decoding: try JSONWriter(indent: nil).data(.object(JSONObject([("Río 🌊", .int(1))]))), as: UTF8.self)
-        XCTAssertEqual(text, #"{"Río 🌊":1}"#)
+        let key = "R\u{ED}o \u{1F30A}"
+        let text = String(decoding: try JSONWriter(indent: nil).data(.object(JSONObject([(key, .int(1))]))), as: UTF8.self)
+        XCTAssertEqual(text, "{\"R" + esc + "00edo " + esc + "d83c" + esc + "df0a\":1}")
         XCTAssertTrue(text.unicodeScalars.allSatisfy(\.isASCII))
     }
 
