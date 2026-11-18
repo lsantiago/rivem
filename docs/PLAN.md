@@ -17,11 +17,11 @@
 | Fase | Contenido | Criterio de "hecho" |
 |---|---|---|
 | **F0** Infraestructura ✅ | Estructura del repo, `RiverCore` con geometría base, app mínima con autocomprobación, `ios.yml` (tests + simulador + IPA) | La app abre en el iPhone 14 Pro con la autocomprobación en verde (17-11-2026) |
-| **F1** Formato y referencias | `RiverCore/Project`: JSON con orden de claves, enteros y `NaN`; `settings.json`, `xsections.json`, `transformation_matrix.json`, `piv_results.json`, batimetría; carpeta de proyecto (abrir, crear, reubicar rutas, invalidar al cambiar la matriz, chequeo de compatibilidad). App: lista de aforos en Archivos, importar proyecto, detalle. Referencias: ejemplos de RIVeR en `ci/testdata/river-examples` | Un proyecto de escritorio se abre en la app y se reescribe sin cambios de significado. `tools/generate_golden.py` pasa a F2/F3, cuando haya cálculos que comparar |
+| **F1** Formato y referencias ✅ | `RiverCore/Project`: JSON con orden de claves, enteros y `NaN`; `settings.json`, `xsections.json`, `transformation_matrix.json`, `piv_results.json`, batimetría; carpeta de proyecto (abrir, crear, reubicar rutas, invalidar al cambiar la matriz, chequeo de compatibilidad). App: lista de aforos en Archivos, importar proyecto, detalle. Referencias: ejemplos de RIVeR en `ci/testdata/river-examples` | Un proyecto de escritorio se abre en la app y se reescribe sin cambios de significado. `tools/generate_golden.py` pasa a F2/F3, cuando haya cálculos que comparar |
 | **F2** Geometría completa ✅ | Oblicua con 4 puntos + 6 distancias (trilateración), rectificación 3D con cámara (DLT de 11 parámetros), ROI, rectificación de imagen | Errores de reproyección iguales a escritorio en los ejemplos |
-| **F3** PIV | Lectura de frames (AVAssetReader en la app, buffers al núcleo), correlación FFT multipasada, subpíxel gaussiano en coma flotante, filtros | Desplazamiento sintético conocido recuperado con error < 0,05 px; campos de ejemplo dentro de tolerancia |
+| **F3** PIV ✅ | Lectura de frames (AVAssetReader en la app, buffers al núcleo), correlación FFT multipasada, subpíxel gaussiano en coma flotante, filtros | Desplazamiento sintético conocido recuperado con error < 0,05 px; campos de ejemplo dentro de tolerancia |
 | **F4** Sección y caudal ✅ | Batimetría (CSV), estaciones, alpha, método de sección media, área/ancho con cruces del nivel de agua, incertidumbre coherente | Caudal de los ejemplos igual a la referencia corregida |
-| **F5** App MVP (LSPIV) | Flujo completo: video (importar o grabar con fps fijos, foco/exposición bloqueados y **estabilización desactivada**), frames, puntos de control, ROI, PIV, sección, resultados, exportar proyecto/CSV/PDF | Aforo real en campo con el iPhone, coherente con escritorio |
+| **F5** App MVP (LSPIV) 🚧 | Flujo completo: video (importar o grabar con fps fijos, foco/exposición bloqueados y **estabilización desactivada**), frames, puntos de control, ROI, PIV, sección, resultados, exportar proyecto/CSV/PDF | Aforo real en campo con el iPhone, coherente con escritorio |
 | **F6** STIV | Imágenes espacio-temporales + CNN exportada a Core ML | Ángulos y velocidades como escritorio en los ejemplos |
 | **F7** Estabilización y lente | Estabilización de frames; intrínsecos del iPhone desde `AVCameraCalibrationData` | — |
 | **F8** iWave (opcional) | Ajuste espectral (SADE) | — |
@@ -57,5 +57,7 @@ Cuando una corrección cambia resultados respecto a escritorio, la referencia de
 
 - El núcleo se depura con sus pruebas (CI, o `swift test` en Windows con el toolchain de Swift).
 - CI: resultados de XCTest (`.xcresult`), capturas del simulador y log de la app como artefactos.
-- En el iPhone: la app escribirá un log exportable desde un panel de diagnóstico (F5). El simulador no tiene
+- En el iPhone: registro en `Documents/logs/rivem.log` (y OSLog), exportable desde «Diagnóstico y registro».
+- CI: `-autotest_pipeline 1` arma un aforo sintético (partículas con desplazamiento conocido, UAV, sección
+  trapezoidal) y compara el caudal con el analítico (tolerancia 3 %); capturas de cada paso del flujo. El simulador no tiene
   cámara: la captura se prueba en el teléfono.

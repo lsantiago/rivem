@@ -1,0 +1,150 @@
+import RiverCore
+import SwiftUI
+
+/// Step 1, desktop "Video Range": start/end time, step and resize factor → `FrameExtractor` → `frames/` and
+/// `video_range`.
+struct VideoRangeView: View {
+    let model: WorkflowModel
+
+    @State private var startText: String = "0"
+    @State private var endText: String = ""
+    @State private var step: Int = 1
+    @State private var factor: Double = 1
+    @State private var progress: Double = 0
+    @State private var task: Task<Void, Never>? = nil
+    @State private var message: String? = nil
+    @State private var error: String? = nil
+    @State private var loaded = false
+
+    private static let factors: [Double] = [1, 0.75, 0.5, 0.25]
+
+    var body: some View {
+        Form {
+            VideoInfoSection(model: model)
+            Section("Rango") {
+                LabeledContent("Inicio (s)") {
+                    TextField("0", text: $startText).multilineTextAlignment(.trailing).decimalKeyboard()
+                }
+                LabeledContent("Fin (s)") {
+                    TextField("fin", text: $endText).multilineTextAlignment(.trailing).decimalKeyboard()
+                }
+                Stepper("Paso: \(step) (uno de cada \(step) frames)", value: $step, in: 1...30)
+                Picker("Escala de los frames", selection: $factor) {
+                    ForEach(Self.factors, id: \.self) { f in
+                        Text(String(format: "%.0f %%", f * 100)).tag(f)
+                    }
+                }
+                RangeSummaryRow(range: currentRange, video: model.settings?.video)
+            }
+            Section {
+                if task != nil {
+                    ProgressView(value: progress) {
+                        Text(String(format: "Extrayendo frames… %.0f %%", progress * 100))
+                    }
+                    Button("Cancelar", role: .destructive) { task?.cancel() }
+                } else {
+                    Button {
+                        startExtraction()
+                    } label: {
+                        Label(model.frameCount > 0 ? "Volver a extraer los frames" : "Extraer frames", systemImage: "film.stack")
+                    }
+                    .disabled(!model.hasVideo || currentRange == nil)
+                }
+                if let m = message { Text(m).font(.callout).foregroundStyle(.secondary) }
+                ErrorBanner(message: error)
+            } footer: {
+                Text("Como en RIVeR escritorio, el frame N del video se guarda como frames/N.jpg (10 dígitos) y el intervalo entre frames es paso / fps. La extracción no corrige lente ni estabiliza.")
+            }
+        }
+        .onAppear(perform: loadFromSettings)
+        .onDisappear { task?.cancel() }
+    }
+
+    private var fps: Double { model.settings?.video?.fps ?? 30 }
+
+    private var currentRange: VideoRange? {
+        guard let start = Fmt.parse(startText), let end = Fmt.parse(endText), end > start else { return nil }
+        let r = FramesPipeline.range(startTime: start, endTime: end, step: step, factor: factor, fps: fps)
+        return r.frameIndices.isEmpty ? nil : r
+    }
+
+    private func loadFromSettings() {
+        guard !loaded, let s = model.settings else { return }
+        loaded = true
+        let range: VideoRange? = s.videoRange ?? s.video.map { FramesPipeline.defaultRange($0) }
+        guard let r = range else { return }
+        startText = Fmt.num(Double(r.start) / fps, 2)
+        endText = Fmt.num(Double(r.end) / fps, 2)
+        step = r.step
+        factor = Self.factors.contains(r.factor) ? r.factor : 1
+    }
+
+    private func startExtraction() {
+        guard let range = currentRange, let project = model.project else { return }
+        error = nil
+        message = nil
+        progress = 0
+        task = Task { @MainActor in
+            do {
+                let outcome = try await FramesPipeline.extract(project, range: range) { (value: Double) in
+                    Task { @MainActor in progress = value }
+                }
+                model.replace(outcome.project)
+                var text = "\(outcome.written) frames extraídos."
+                if outcome.sizeChanged {
+                    text += " El tamaño de los frames cambió: vuelve a georreferenciar y a dibujar las secciones."
+                }
+                message = text
+            } catch is CancellationError {
+                message = "Extracción cancelada."
+                model.reload()
+            } catch {
+                self.error = "\(error)"
+                AppLog.error("Extracción de frames: \(error)")
+                model.reload()
+            }
+            task = nil
+        }
+    }
+}
+
+private struct VideoInfoSection: View {
+    let model: WorkflowModel
+
+    var body: some View {
+        Section("Video") {
+            if let v = model.settings?.video {
+                LabeledContent("Archivo", value: v.name ?? "—")
+                if let w = v.width, let h = v.height { LabeledContent("Resolución", value: "\(w) × \(h)") }
+                LabeledContent("FPS (redondeado como escritorio)", value: Fmt.num(v.fps, 0))
+                LabeledContent("Duración", value: "\(Fmt.num(v.duration, 2)) s")
+            }
+            LabeledContent("Frames en el proyecto", value: "\(model.frameCount)")
+            if !model.hasVideo {
+                Text("El video no está en la carpeta del proyecto: no se pueden extraer frames.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+}
+
+private struct RangeSummaryRow: View {
+    let range: VideoRange?
+    let video: VideoInfo?
+
+    var body: some View {
+        if let r = range, let fps = video?.fps, fps > 0 {
+            let count: Int = r.frameIndices.count
+            let dt: Double = Double(r.step) / fps
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Frames \(r.start)–\(r.end) · \(count) imágenes · \(max(count - 1, 0)) pares")
+                Text("Δt entre frames: \(Fmt.num(dt * 1000, 1)) ms")
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        } else {
+            Text("Rango no válido").font(.callout).foregroundStyle(.red)
+        }
+    }
+}

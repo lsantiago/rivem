@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Usage: simulator-tests.sh <simulator-udid> <path/to/RIVEM.app>
 # Installs and launches the app, copies the desktop fixture project (../ci/testdata/desktop-projects/oblique-pisco)
-# into the app's workspace, runs the on-device self-check (-autotest_selfcheck), which also opens every project,
-# and takes screenshots of the list and of the project detail.
+# into the app's workspace, and runs in one launch:
+#   -autotest_pipeline 1  synthetic end-to-end measurement (frames → UAV geometry → section + mask → PIV → discharge,
+#                         checked against the analytic discharge; project kept as Documents/RIVeR/autotest_sintetico)
+#   -autotest_selfcheck 1 core self-check + opening every project of the workspace
+# Then it takes screenshots of the list, the fixture project and every workflow step of the synthetic project
+# (-autotest_open_project <name> -autotest_step <step>), and checks that opening the desktop fixture did not modify it.
 set -u
 UDID="$1"
 APP="$2"
@@ -27,11 +31,11 @@ PROJ="$DATA/Documents/RIVeR/pisco/20250310T1542"
 mkdir -p "$PROJ/frames"
 cp "$FIXTURE"/*.json "$FIXTURE"/*.csv "$PROJ/"
 
-# ---------- self-check + project checks ----------
+# ---------- synthetic pipeline + self-check + project checks ----------
 rm -f "$DATA/Documents/autotest_done" "$DATA/Documents/autotest_summary.txt"
-xcrun simctl launch "$UDID" "$BUNDLE" -autotest_selfcheck 1
+xcrun simctl launch "$UDID" "$BUNDLE" -autotest_selfcheck 1 -autotest_pipeline 1
 done_flag=0
-for _ in $(seq 1 30); do
+for _ in $(seq 1 150); do
   sleep 2
   if [ -f "$DATA/Documents/autotest_done" ]; then done_flag=1; break; fi
 done
@@ -42,11 +46,22 @@ for f in autotest_summary.txt autotest_done; do
 done
 xcrun simctl terminate "$UDID" "$BUNDLE" || true
 
-# ---------- project detail screenshot ----------
-xcrun simctl launch "$UDID" "$BUNDLE" -autotest_open_first 1
-sleep 6
-xcrun simctl io "$UDID" screenshot screenshots/02_detail.png 2>/dev/null
-xcrun simctl terminate "$UDID" "$BUNDLE" || true
+# ---------- screenshots of a project at a given step ----------
+shot() { # <file> <project name> <step> [seconds]
+  xcrun simctl launch "$UDID" "$BUNDLE" -autotest_open_project "$2" -autotest_step "$3"
+  sleep "${4:-7}"
+  xcrun simctl io "$UDID" screenshot "screenshots/$1.png" 2>/dev/null
+  xcrun simctl terminate "$UDID" "$BUNDLE" || true
+}
+
+shot 02_detail pisco summary
+shot 03_workflow autotest_sintetico list
+shot 04_video autotest_sintetico video
+shot 05_geometry autotest_sintetico geometry
+shot 06_sections autotest_sintetico sections
+shot 07_processing autotest_sintetico processing
+shot 08_results autotest_sintetico results 10
+shot 09_export autotest_sintetico export
 
 # The app must not have rewritten the desktop files just by opening them.
 for f in settings.json xsections.json transformation_matrix.json; do
@@ -56,16 +71,33 @@ for f in settings.json xsections.json transformation_matrix.json; do
   fi
 done
 
-xcrun simctl spawn "$UDID" log show --last 10m --predicate 'process == "RIVEM"' --style compact > screenshots/app.log 2>/dev/null || true
+# Synthetic project as written by the app (small: 12 frames), for inspection or to open in RIVeR desktop.
+SYN=$(ls -d "$DATA/Documents/RIVeR/autotest_sintetico"/*/ 2>/dev/null | head -1)
+if [ -n "$SYN" ]; then
+  mkdir -p screenshots/autotest_sintetico
+  cp -R "$SYN" screenshots/autotest_sintetico/ 2>/dev/null || true
+fi
+cp "$DATA/Documents/logs/rivem.log" screenshots/rivem.log 2>/dev/null || true
+xcrun simctl spawn "$UDID" log show --last 15m --predicate 'process == "RIVEM"' --style compact > screenshots/app.log 2>/dev/null || true
 
-echo "===== SELF-CHECK ====="
+echo "===== SELF-CHECK + PIPELINE ====="
 cat screenshots/autotest_summary.txt 2>/dev/null || echo "(no summary)"
+echo
 if [ "$done_flag" != 1 ] || [ "$(cat screenshots/autotest_done 2>/dev/null)" != "ok" ]; then
-  echo "Self-check did not finish correctly"
+  echo "Self-check / pipeline did not finish correctly"
   STATUS=1
 fi
 if ! grep -q "^PASS proyecto pisco/20250310T1542" screenshots/autotest_summary.txt 2>/dev/null; then
   echo "The desktop fixture project was not opened"
+  STATUS=1
+fi
+if ! grep -q "^PASS pipeline caudal" screenshots/autotest_summary.txt 2>/dev/null; then
+  echo "The synthetic discharge check did not pass"
+  STATUS=1
+fi
+if grep -q "^FAIL" screenshots/autotest_summary.txt 2>/dev/null; then
+  echo "Some checks failed:"
+  grep "^FAIL" screenshots/autotest_summary.txt
   STATUS=1
 fi
 

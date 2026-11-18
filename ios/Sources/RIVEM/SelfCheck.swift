@@ -44,12 +44,38 @@ enum SelfCheck {
 
 /// CI hook: `simctl launch … -autotest_selfcheck 1` writes the self-check results to Documents and an
 /// `autotest_done` file containing `ok` or `fail` (read by ios/ci/simulator-tests.sh). Every project found in the
-/// workspace (the CI copies a desktop fixture there) is opened and checked too.
+/// workspace (the CI copies a desktop fixture there) is opened and checked too. With `-autotest_pipeline 1` the
+/// synthetic end-to-end measurement (`PipelineAutotest`) runs first, in the background, and its lines are added.
+///
+/// Screenshot hooks (no checks): `-autotest_open_first 1` opens the first project of the list, and
+/// `-autotest_open_project <name> -autotest_step <step>` opens the project whose name folder is `<name>` at a
+/// workflow step (`WorkflowStep` raw values: summary, video, geometry, sections, processing, results, export; `list`
+/// shows the step list).
 enum Autotest {
+    static var isPipelineRequested: Bool { UserDefaults.standard.bool(forKey: "autotest_pipeline") }
+    static var isSelfCheckRequested: Bool { UserDefaults.standard.bool(forKey: "autotest_selfcheck") }
+
+    static var projectToOpen: String? { UserDefaults.standard.string(forKey: "autotest_open_project") }
+
+    static var showStepList: Bool { UserDefaults.standard.string(forKey: "autotest_step") == "list" }
+
+    static var stepToOpen: WorkflowStep? {
+        guard let raw = UserDefaults.standard.string(forKey: "autotest_step") else { return nil }
+        return WorkflowStep(rawValue: raw)
+    }
+
     @MainActor
     static func runIfRequested(workspace: Workspace) async {
-        guard UserDefaults.standard.bool(forKey: "autotest_selfcheck") else { return }
-        var lines = SelfCheck.run().map { "\($0.passed ? "PASS" : "FAIL") \($0.name): \($0.detail)" }
+        guard isSelfCheckRequested || isPipelineRequested else { return }
+        var lines: [String] = []
+        if isPipelineRequested {
+            let root: URL = workspace.root
+            let pipelineLines: [String] = await Task.detached(priority: .userInitiated) { () -> [String] in
+                PipelineAutotest.run(root: root)
+            }.value
+            lines.append(contentsOf: pipelineLines)
+        }
+        lines.append(contentsOf: SelfCheck.run().map { "\($0.passed ? "PASS" : "FAIL") \($0.name): \($0.detail)" })
         workspace.reload()
         for summary in workspace.projects {
             lines.append(projectLine(summary))
@@ -57,6 +83,8 @@ enum Autotest {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try? lines.joined(separator: "\n").write(to: docs.appendingPathComponent("autotest_summary.txt"), atomically: true, encoding: .utf8)
         let status = lines.allSatisfy { $0.hasPrefix("PASS") } ? "ok" : "fail"
+        for line in lines { AppLog.info("autotest: \(line)") }
+        AppLog.flush()
         try? status.write(to: docs.appendingPathComponent("autotest_done"), atomically: true, encoding: .utf8)
     }
 

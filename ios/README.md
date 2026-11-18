@@ -10,7 +10,11 @@ App nativa SwiftUI (iOS 17+). Todo el cálculo corre en el dispositivo.
     lo lea igual en UTF-8 o Latin-1; las rutas guardadas se resuelven por nombre de archivo dentro del proyecto.
 - Los proyectos viven en `Documents/RIVeR/<nombre>/<YYYYMMDDTHHMM>/`, visibles en la app Archivos
   (En mi iPhone › RIVEM › RIVeR): se copian tal cual a la carpeta `RIVeR` de escritorio y al revés.
-- **`Sources/RIVEM`**: la app (pantallas, cámara, archivos de proyecto).
+- **`Sources/RIVEM`**: la app.
+  - `Pipeline/`: la lógica de cada paso sin UI (crear proyecto, frames, geometría, secciones + máscara, PIV,
+    caudal, exportar) y `PipelineAutotest` (aforo sintético de CI). Las pantallas y el autotest llaman lo mismo.
+  - `Workflow/` (lista de pasos), `Steps/<paso>/` (pantallas), `Common/ImageCanvas` (imagen con zoom y puntos),
+    `Camera/` (grabación a fps fijos, estabilización desactivada), `Media/`, `Diagnostics/` (registro exportable).
 - **`Tests/RiverCoreTests`**: pruebas con solución analítica y, desde F1, contra las referencias de `../ci/testdata`.
 
 ## Compilar
