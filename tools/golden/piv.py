@@ -11,6 +11,12 @@ Writes into ``out`` (copied to ci/testdata/golden/piv/ and read by ios/Tests/Riv
   ``piv_fftmulti`` with GUI defaults (mask_auto, multipass, std 4, median 0.02/2, ia2 = ia1/2) and the mask applied
   at ``(int(x), int(y))``.
 
+  One RIVeR defect is patched for the reference ``pairs`` (``normalization_fix: true``): in pass 2
+  ``normalize_to_uint8`` runs in float64 and, for weak correlations, maps the window maximum to 254, so the peak is
+  lost and ``process_result_conv`` shifts the vectors of every following window by one slot. The wrapper forces each
+  window's maximum to 255. The unpatched output is kept as ``upstream_pairs``, and each pair records
+  ``missing_peaks`` (the windows RIVeR loses).
+
 Runs in CI only (.github/workflows/golden.yml) and takes a few seconds.
 """
 
@@ -36,9 +42,28 @@ def _floats(a) -> list:
     return [float(v) for v in np.asarray(a, dtype=float).ravel()]
 
 
+_COUNTER = {"missing": 0}
+
+
+def _counting(original, fix):
+    """Wraps ``normalize_to_uint8``: counts windows whose maximum did not map to 255 (RIVeR then loses the peak and
+    ``process_result_conv`` shifts the vectors of all following windows by one slot). With ``fix`` the maximum of
+    every window is forced to 255, the only change, so the reference is RIVeR without that defect."""
+
+    def wrapped(result_conv):
+        out = original(result_conv)
+        maxres = np.amax(result_conv, axis=(0, 1))
+        _COUNTER["missing"] += int(np.sum(np.amax(out, axis=(0, 1)) < 255))
+        if fix:
+            out[result_conv == maxres[np.newaxis, np.newaxis, :]] = 255
+        return out
+
+    return wrapped
+
+
 def _run_pairs(frames, background, case):
     from river.core import image_preprocessing as impp
-    from river.core.piv_fftmulti import piv_fftmulti
+    import river.core.piv_fftmulti as pf
 
     h, w = frames[0].shape
 
@@ -58,28 +83,43 @@ def _run_pairs(frames, background, case):
         cv2.fillPoly(mask, [np.array(case["mask_polygon"], dtype=np.int32)], 1)
     mask_piv = np.ones((h, w), dtype=np.uint8)
     ia1 = case["interrogation_area_1"]
-    pairs = []
     shape = None
     xs = ys = None
-    for i in range(len(pre) - 1):
-        xt, yt, ut, vt, _, grad = piv_fftmulti(
-            pre[i], pre[i + 1], mask=mask_piv, bbox=bbox,
-            interrogation_area_1=ia1, interrogation_area_2=ia1 / 2,
-            mask_auto=True, multipass=True,
-            standard_filter=case["std_filtering"], standard_threshold=case["std_threshold"],
-            median_test_filter=case["median_test_filtering"], epsilon=case["median_test_epsilon"],
-            threshold=case["median_test_threshold"], step=None,
-        )
-        xi = np.clip(xt.astype(int), 0, w - 1)
-        yi = np.clip(yt.astype(int), 0, h - 1)
-        inside = mask[yi, xi] > 0
-        ut = ut.astype(float)
-        vt = vt.astype(float)
-        ut[~inside] = np.nan
-        vt[~inside] = np.nan
-        shape = list(xt.shape)
-        xs, ys = _floats(xt), _floats(yt)
-        pairs.append({"u": _floats(ut), "v": _floats(vt), "gradient": _floats(grad)})
+
+    def run_all_pairs():
+        nonlocal shape, xs, ys
+        result = []
+        for i in range(len(pre) - 1):
+            _COUNTER["missing"] = 0
+            xt, yt, ut, vt, _, grad = pf.piv_fftmulti(
+                pre[i], pre[i + 1], mask=mask_piv, bbox=bbox,
+                interrogation_area_1=ia1, interrogation_area_2=ia1 / 2,
+                mask_auto=True, multipass=True,
+                standard_filter=case["std_filtering"], standard_threshold=case["std_threshold"],
+                median_test_filter=case["median_test_filtering"], epsilon=case["median_test_epsilon"],
+                threshold=case["median_test_threshold"], step=None,
+            )
+            xi = np.clip(xt.astype(int), 0, w - 1)
+            yi = np.clip(yt.astype(int), 0, h - 1)
+            inside = mask[yi, xi] > 0
+            ut = ut.astype(float)
+            vt = vt.astype(float)
+            ut[~inside] = np.nan
+            vt[~inside] = np.nan
+            shape = list(xt.shape)
+            xs, ys = _floats(xt), _floats(yt)
+            result.append({"u": _floats(ut), "v": _floats(vt), "gradient": _floats(grad),
+                           "missing_peaks": int(_COUNTER["missing"])})
+        return result
+
+    original = pf.normalize_to_uint8
+    try:
+        pf.normalize_to_uint8 = _counting(original, fix=False)
+        upstream_pairs = run_all_pairs()
+        pf.normalize_to_uint8 = _counting(original, fix=True)
+        pairs = run_all_pairs()
+    finally:
+        pf.normalize_to_uint8 = original
     u = np.array([p["u"] for p in pairs])
     v = np.array([p["v"] for p in pairs])
     with np.errstate(all="ignore"):
@@ -89,7 +129,8 @@ def _run_pairs(frames, background, case):
             um = np.nanmedian(u, axis=0)
             vm = np.nanmedian(v, axis=0)
     out = dict(case)
-    out.update({"shape": shape, "x": xs, "y": ys, "pairs": pairs, "u_median": _floats(um), "v_median": _floats(vm)})
+    out.update({"shape": shape, "x": xs, "y": ys, "pairs": pairs, "u_median": _floats(um), "v_median": _floats(vm),
+                "normalization_fix": True, "upstream_pairs": upstream_pairs})
     if case.get("mask_polygon"):
         out["mask"] = _b64(mask)
     return out

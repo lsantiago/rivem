@@ -133,6 +133,12 @@ struct PIVGrid: Equatable {
 ///   A peak on the border row/column of the correlation plane gives NaN (upstream read the neighbouring column /
 ///   window through flat indexing). A constant correlation plane gives NaN (upstream's peak list then lost
 ///   alignment with the windows).
+/// - Peak loss (RIVeR defect not in PLAN.md's table): in pass 2, upstream's `normalize_to_uint8` runs in float64.
+///   With weak correlations (max − min below about 1e6, typical after background subtraction) the window maximum
+///   maps to 254, so no peak is found. `process_result_conv` then assigns the remaining peaks in order, which shifts
+///   the vectors of every following window by one slot and leaves residual 0 in the last ones. On the canuelas
+///   golden crop with `remove_background`, 200 of 437 windows per pair are hit. RIVEM takes the maximum of the Float
+///   plane directly, so every window keeps its own peak.
 /// - Odd or < 8 px windows are rejected (`PIVParameters.validate`); desktop only offers 64–512.
 /// - With a single row/column in pass 1 the predictor is constant along it (upstream's spline raises).
 /// - Upstream quirk kept for file parity: `gradient[0]` is always NaN (it indexed with a `uint8` zero array).

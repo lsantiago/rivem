@@ -331,6 +331,18 @@ final class PIVAlgorithmTests: XCTestCase {
 /// them, and occasionally which vectors the median test discards (then replaced by neighbours). So the fields are
 /// compared statistically on vectors valid in both: median |Δ| < 0.1 px and 95th percentile < 0.5 px, the NaN
 /// pattern may differ in at most 5 % of the nodes, and the grid must match exactly. CLAHE must be bit-exact.
+///
+/// Reference with RIVeR's peak-loss defect patched: in pass 2, `normalize_to_uint8` works in float64, and with weak
+/// correlations (max − min below about 1e6, e.g. background-subtracted frames) the maximum maps to 254, so no peak
+/// is found. `process_result_conv` then shifts every following window's vector by one slot, and the last windows
+/// get residual 0. Raw RIVeR had 200 of 437 windows lost per pair in `background` and 1 in `ia64` pair 1, which
+/// gave median |Δ| 0.33 px, p95 1.8 px. tools/golden/piv.py therefore forces each window's maximum to 255
+/// (`normalization_fix`, raw output kept as `upstream_pairs`). RIVEM finds the maximum directly and does not have
+/// this defect. An older reference without the patch is skipped.
+///
+/// `background` p95 limit 1.0 px: on these low-texture frames, the uint8 versus Float sub-pixel fit alone (PLAN.md #4)
+/// changes outlier decisions enough to give p95 0.68 px. Measured with two numpy mirrors of the pipeline that differ
+/// only in that fit: median 0.03 px, p95 0.68 / 0.41 px for the two pairs (ia64: 0.30 / 0.42, default: 0.11 / 0.15).
 final class PIVGoldenTests: XCTestCase {
     private func goldenURL(_ name: String) throws -> URL {
         let url = TestData.url("golden/piv/\(name)")
@@ -403,6 +415,9 @@ final class PIVGoldenTests: XCTestCase {
         guard let o = try JSON.read(goldenURL("canuelas_piv_\(name).json")).objectValue else {
             throw XCTSkip("caso \(name) incompleto")
         }
+        guard o["normalization_fix"]?.boolValue == true else {
+            throw XCTSkip("Referencia \(name) sin el parche de normalize_to_uint8: regenerar con golden.yml")
+        }
         var p = PIVParameters()
         p.interrogationArea1 = o["interrogation_area_1"]?.intValue ?? 128
         p.removeBackground = o["remove_background"]?.boolValue ?? false
@@ -470,7 +485,8 @@ final class PIVGoldenTests: XCTestCase {
                            med, p95, nanMismatch, total, percentile(gradRel, 0.95))
         print("PIV golden \(name): \(stats)")
         XCTAssertLessThan(med, 0.1, name)
-        XCTAssertLessThan(p95, 0.5, name)
+        let p95Limit: Double = name == "background" ? 1.0 : 0.5
+        XCTAssertLessThan(p95, p95Limit, name)
         XCTAssertLessThanOrEqual(Double(nanMismatch), 0.05 * Double(total), name)
         // The gradient only depends on the windows (and, in pass 2, the warp): it must agree closely.
         XCTAssertLessThan(percentile(gradRel, 0.95), 0.1, name)
