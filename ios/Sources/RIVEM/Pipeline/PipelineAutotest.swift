@@ -304,11 +304,18 @@ enum VideoAutotest {
         let h: Int = max(1, Int((Double(w) * Double(a.height) / Double(max(a.width, 1))).rounded()))
         func normalized(_ image: CGImage) -> [Double] {
             let px: RGBAImage = ImageCoding.rgba(image, width: w, height: h)
-            var l: [Double] = (0..<(w * h)).map { i in
-                0.299 * Double(px.bytes[4 * i]) + 0.587 * Double(px.bytes[4 * i + 1]) + 0.114 * Double(px.bytes[4 * i + 2])
+            var l = [Double](repeating: 0, count: w * h)
+            for i in 0..<(w * h) {
+                let r: Double = Double(px.bytes[4 * i])
+                let g: Double = Double(px.bytes[4 * i + 1])
+                let b: Double = Double(px.bytes[4 * i + 2])
+                l[i] = 0.299 * r + 0.587 * g + 0.114 * b
             }
-            let mean: Double = l.reduce(0, +) / Double(l.count)
-            let sd: Double = max(1e-9, (l.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(l.count)).squareRoot())
+            let n: Double = Double(l.count)
+            let mean: Double = l.reduce(0, +) / n
+            var ss: Double = 0
+            for v in l { ss += (v - mean) * (v - mean) }
+            let sd: Double = max(1e-9, (ss / n).squareRoot())
             for i in l.indices { l[i] = (l[i] - mean) / sd }
             return l
         }
