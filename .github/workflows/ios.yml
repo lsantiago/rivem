@@ -50,6 +50,10 @@ jobs:
             -resultBundlePath RiverCoreTests.xcresult \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log | tail -60
 
+      - name: Failed assertions
+        if: failure()
+        run: grep -E ": error:|Fatal error|Test Case .* failed" test.log | head -50 || true
+
       - name: Build for simulator (Release)
         run: |
           set -o pipefail

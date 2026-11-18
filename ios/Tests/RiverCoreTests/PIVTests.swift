@@ -271,13 +271,13 @@ final class PIVAlgorithmTests: XCTestCase {
     /// PLAN.md #5/#11: an unreadable frame turns its two pairs into NaN and lists them; the run goes on.
     func testFailedPairIsNaNAndListed() throws {
         let frames: [GrayImage] = (0..<4).map { (i: Int) -> GrayImage in
-            renderSpeckle(width: 128, height: 128, particles: 450, seed: 77, dx: Double(i) * 1.5, dy: Double(i) * 0.5)
+            renderSpeckle(width: 256, height: 256, particles: 1800, seed: 77, dx: Double(i) * 1.5, dy: Double(i) * 0.5)
         }
         let provider: (Int) throws -> GrayImage = { (i: Int) throws -> GrayImage in
             if i == 2 { throw Unreadable() }
             return frames[i]
         }
-        let p = PIVParameters(interrogationArea1: 32)
+        let p = PIVParameters(interrogationArea1: 64)
         var progressCalls = 0
         let seq = try PIVSequence.run(frameCount: 4, frame: provider, parameters: p,
                                       progress: { (_: Int, _: Int) in progressCalls += 1 })

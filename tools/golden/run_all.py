@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
 import sys
 import time
 import traceback
@@ -61,4 +62,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    code = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    # pyfftw/numba worker threads can abort the interpreter at shutdown ("GIL is released"); every result is
+    # already written, so leave without running the finalisers.
+    os._exit(code)
