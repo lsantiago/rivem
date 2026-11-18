@@ -107,8 +107,7 @@ struct SectionsStepView: View {
             if d.bathymetryFile == nil { missing.append("la batimetría") }
             if !missing.isEmpty { lines.append("\(d.name): falta " + missing.joined(separator: " y ")) }
         }
-        return lines.isEmpty ? nil : lines.joined(separator: "
-")
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
     private func useEditedBathymetry(_ b: Bathymetry, level: Double?) {

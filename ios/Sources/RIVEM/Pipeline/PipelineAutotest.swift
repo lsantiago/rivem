@@ -83,8 +83,7 @@ enum PipelineAutotest {
             let importedText: String = (try? String(contentsOf: project.resolve(imported.file), encoding: .utf8)) ?? "?"
             let templateText: String = (try? String(contentsOf: project.resolve(templateFile), encoding: .utf8)) ?? "!"
             let templateArea: Double = BathymetryTemplates.area(.trapezoidal, waterWidth: 12, depth: 1, bankSlope: 2)
-            report("batimetria plantilla", importedText == templateText && templateText.hasPrefix("station,stage
-")
+            report("batimetria plantilla", importedText == templateText && templateText.hasPrefix("station,stage\n")
                    && abs(templateArea - expectedArea) < 1e-12,
                    "\(templateFile) = \(imported.file) (\(template.stations.count) puntos), área de la plantilla \(Fmt.num(templateArea, 3)) m2")
             var draft = SectionDraft(name: "CS_autotest")
