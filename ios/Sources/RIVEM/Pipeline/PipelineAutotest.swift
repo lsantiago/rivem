@@ -262,9 +262,9 @@ enum VideoAutotest {
                 next = meanAbsDiff(a0, r1)
             }
             report("extraccion alternativa", altOutcome.method == .generator && altOutcome.written == outcome.written
-                   && altFrames.map(\.lastPathComponent) == frames.map(\.lastPathComponent) && same >= 0 && same < next && same < 4,
+                   && altFrames.map(\.lastPathComponent) == frames.map(\.lastPathComponent) && same >= 0 && same < 0.8 * next,
                    "\(altOutcome.written) frames con AVAssetImageGenerator; diferencia media con el mismo frame del lector "
-                   + "\(Fmt.num(same, 2)), con el siguiente \(Fmt.num(next, 2)) (0-255)")
+                   + "\(Fmt.num(same, 3)), con el siguiente \(Fmt.num(next, 3)) (luminancia normalizada)")
             try? FileManager.default.removeItem(at: altFolder)
 
             // The image the canvases draw: WorkflowModel's thumbnail.
@@ -297,19 +297,26 @@ enum VideoAutotest {
         return lines
     }
 
-    /// Mean absolute difference (0–255) of the luminance of two images, compared at 480 px wide.
+    /// Mean absolute difference of the z-scored luminance of two images (480 px wide): insensitive to the global
+    /// tone change of AVAssetImageGenerator's colour management, sensitive to what moved between frames.
     static func meanAbsDiff(_ a: CGImage, _ b: CGImage) -> Double {
         let w = 480
         let h: Int = max(1, Int((Double(w) * Double(a.height) / Double(max(a.width, 1))).rounded()))
-        let x: RGBAImage = ImageCoding.rgba(a, width: w, height: h)
-        let y: RGBAImage = ImageCoding.rgba(b, width: w, height: h)
-        var sum = 0.0
-        for i in 0..<(w * h) {
-            let lx: Double = 0.299 * Double(x.bytes[4 * i]) + 0.587 * Double(x.bytes[4 * i + 1]) + 0.114 * Double(x.bytes[4 * i + 2])
-            let ly: Double = 0.299 * Double(y.bytes[4 * i]) + 0.587 * Double(y.bytes[4 * i + 1]) + 0.114 * Double(y.bytes[4 * i + 2])
-            sum += abs(lx - ly)
+        func normalized(_ image: CGImage) -> [Double] {
+            let px: RGBAImage = ImageCoding.rgba(image, width: w, height: h)
+            var l: [Double] = (0..<(w * h)).map { i in
+                0.299 * Double(px.bytes[4 * i]) + 0.587 * Double(px.bytes[4 * i + 1]) + 0.114 * Double(px.bytes[4 * i + 2])
+            }
+            let mean: Double = l.reduce(0, +) / Double(l.count)
+            let sd: Double = max(1e-9, (l.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(l.count)).squareRoot())
+            for i in l.indices { l[i] = (l[i] - mean) / sd }
+            return l
         }
-        return sum / Double(w * h)
+        let x: [Double] = normalized(a)
+        let y: [Double] = normalized(b)
+        var sum = 0.0
+        for i in x.indices { sum += abs(x[i] - y[i]) }
+        return sum / Double(x.count)
     }
 }
 
