@@ -40,8 +40,10 @@ struct FrameExtractor {
         case noVideoTrack
         case reader(String)
         case nothingExtracted
+        case black(String)
         var description: String {
             switch self {
+            case let .black(why): return "Los frames salen negros (\(why)). Exporta el registro desde Diagnóstico."
             case .noVideoTrack: return "El archivo no tiene pista de video."
             case let .reader(why): return "No se pudo leer el video: \(why)"
             case .nothingExtracted: return "No se extrajo ningún frame: revisa el rango."
@@ -49,20 +51,62 @@ struct FrameExtractor {
         }
     }
 
+    enum Method: String {
+        /// AVAssetReader decoding to 32BGRA (fast, sequential).
+        case reader
+        /// AVAssetImageGenerator at each frame's exact presentation time (Apple's own conversion, colour managed).
+        case generator
+    }
+
     let video: URL
     let range: VideoRange
+    /// Skips the reader (CI uses it to check the fallback path gives the same frames).
+    var forceGenerator = false
+
+    /// Raised internally when the reader's first frame is black: the extraction is redone with the generator.
+    private struct BlackFrame: Error { let diagnosis: String }
 
     /// Returns the number of frames written. `progress` receives values in 0…1.
     func extract(into framesFolder: URL, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> Int {
+        try await extractReporting(into: framesFolder, progress: progress).written
+    }
+
+    /// Same as `extract`, also returning the method that produced the frames.
+    ///
+    /// On some devices the reader hands back all-zero BGRA buffers for some files (seen on an iPhone 14 Pro, iOS 27,
+    /// with a video imported from Photos: mean brightness 0.0 with both Core Image and a plain CPU copy). When the
+    /// first frame is black the diagnosis is logged and the frames are extracted again with AVAssetImageGenerator;
+    /// if that is black too, the extraction fails with the diagnosis instead of leaving black frames.
+    func extractReporting(into framesFolder: URL,
+                          progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> (written: Int, method: Method) {
+        let asset = AVURLAsset(url: video)
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw Failure.noVideoTrack }
+        let trackInfo: String = await Self.describe(track: track)
+        AppLog.info("Video \(video.lastPathComponent): \(trackInfo)")
+        if !forceGenerator {
+            do {
+                let n: Int = try await extractWithReader(asset: asset, track: track, into: framesFolder, progress: progress)
+                return (n, .reader)
+            } catch let black as BlackFrame {
+                AppLog.error("Lector de video: primer frame negro (\(black.diagnosis)); se reintenta con AVAssetImageGenerator")
+            }
+        }
+        let n: Int = try await extractWithGenerator(asset: asset, track: track, into: framesFolder, progress: progress)
+        return (n, .generator)
+    }
+
+    private static func cleanFolder(_ framesFolder: URL) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: framesFolder, withIntermediateDirectories: true)
         // Desktop lists every file in frames/: start from a clean folder.
         for name in (try? fm.contentsOfDirectory(atPath: framesFolder.path)) ?? [] {
             try fm.removeItem(at: framesFolder.appendingPathComponent(name))
         }
+    }
 
-        let asset = AVURLAsset(url: video)
-        guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw Failure.noVideoTrack }
+    private func extractWithReader(asset: AVURLAsset, track: AVAssetTrack, into framesFolder: URL,
+                                   progress: @escaping @Sendable (Double) -> Void) async throws -> Int {
+        try Self.cleanFolder(framesFolder)
         let transform = try await track.load(.preferredTransform)
         let reader: AVAssetReader
         do { reader = try AVAssetReader(asset: asset) } catch { throw Failure.reader(error.localizedDescription) }
@@ -85,21 +129,140 @@ struct FrameExtractor {
             guard let pixels = CMSampleBufferGetImageBuffer(sample) else { throw Failure.reader("frame \(index) vacío") }
             let url = framesFolder.appendingPathComponent(RiverProject.frameFileName(index))
             let first: Bool = written == 0
+            var blackDiagnosis: String? = nil
             try autoreleasepool {
                 let image: CGImage = try render(pixels, transform: transform)
-                try ImageCoding.writeJPEG(image, to: url)
                 if first {
                     let mean: Double = ImageCoding.meanLuminance(image)
-                    AppLog.info("Primer frame \(url.lastPathComponent): \(image.width)x\(image.height), brillo medio \(String(format: "%.1f", mean))")
-                    if mean < 3 { AppLog.error("El primer frame extraído es casi negro (brillo medio \(String(format: "%.2f", mean)))") }
+                    AppLog.info("Primer frame \(url.lastPathComponent) (lector): \(image.width)x\(image.height), brillo medio \(String(format: "%.1f", mean))")
+                    if mean < 3 {
+                        blackDiagnosis = "brillo medio " + String(format: "%.2f", mean) + ", " + Self.describe(buffer: pixels)
+                        return
+                    }
                 }
+                try ImageCoding.writeJPEG(image, to: url)
             }
+            if let diagnosis = blackDiagnosis { throw BlackFrame(diagnosis: diagnosis) }
             written += 1
             progress(Double(written) / Double(total))
         }
         if reader.status == .failed { throw Failure.reader(reader.error?.localizedDescription ?? "desconocido") }
         guard written > 0 else { throw Failure.nothingExtracted }
         return written
+    }
+
+    /// Fallback path: every wanted frame is requested at its exact presentation time (zero tolerance), so file `N.jpg`
+    /// still holds source frame N. Frame times come from the compressed samples (no decoding), sorted into
+    /// presentation order.
+    private func extractWithGenerator(asset: AVURLAsset, track: AVAssetTrack, into framesFolder: URL,
+                                      progress: @escaping @Sendable (Double) -> Void) async throws -> Int {
+        try Self.cleanFolder(framesFolder)
+        let times: [CMTime] = try await Self.presentationTimes(asset: asset, track: track)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let factor: CGFloat = (range.factor > 0 && range.factor < 1) ? CGFloat(range.factor) : 1
+        let indices: [Int] = range.frameIndices.filter { $0 < times.count }
+        let total: Int = max(indices.count, 1)
+        var written = 0
+        for index in indices {
+            try Task.checkCancellation()
+            let url: URL = framesFolder.appendingPathComponent(RiverProject.frameFileName(index))
+            let generated: CGImage
+            do {
+                generated = try await generator.image(at: times[index]).image
+            } catch {
+                throw Failure.reader("frame \(index): \(error.localizedDescription)")
+            }
+            let image: CGImage = factor == 1 ? generated : try Self.orient(generated, transform: .identity, factor: factor)
+            if written == 0 {
+                let mean: Double = ImageCoding.meanLuminance(image)
+                AppLog.info("Primer frame \(url.lastPathComponent) (AVAssetImageGenerator): \(image.width)x\(image.height), "
+                    + "brillo medio \(String(format: "%.1f", mean))")
+                if mean < 0.5 { throw Failure.black("brillo medio " + String(format: "%.2f", mean) + " también con AVAssetImageGenerator") }
+            }
+            try ImageCoding.writeJPEG(image, to: url)
+            written += 1
+            progress(Double(written) / Double(total))
+        }
+        guard written > 0 else { throw Failure.nothingExtracted }
+        return written
+    }
+
+    /// Presentation times of the displayable samples, in presentation order (read without decoding).
+    static func presentationTimes(asset: AVAsset, track: AVAssetTrack) async throws -> [CMTime] {
+        let reader: AVAssetReader
+        do { reader = try AVAssetReader(asset: asset) } catch { throw Failure.reader(error.localizedDescription) }
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        output.alwaysCopiesSampleData = false
+        reader.add(output)
+        guard reader.startReading() else { throw Failure.reader(reader.error?.localizedDescription ?? "desconocido") }
+        var times: [CMTime] = []
+        while let sample = output.copyNextSampleBuffer() {
+            guard CMSampleBufferGetNumSamples(sample) > 0 else { continue }
+            if let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[CFString: Any]],
+               let first = attachments.first, (first[kCMSampleAttachmentKey_DoNotDisplay] as? Bool) == true {
+                continue
+            }
+            let t: CMTime = CMSampleBufferGetOutputPresentationTimeStamp(sample)
+            if t.isValid, t.isNumeric, t.seconds >= 0 { times.append(t) }
+        }
+        if reader.status == .failed { throw Failure.reader(reader.error?.localizedDescription ?? "desconocido") }
+        times.sort { CMTimeCompare($0, $1) < 0 }
+        var unique: [CMTime] = []
+        for t in times where unique.last.map({ CMTimeCompare($0, t) != 0 }) ?? true { unique.append(t) }
+        return unique
+    }
+
+    /// Codec, size and colour tags of the video track (logged with every extraction).
+    static func describe(track: AVAssetTrack) async -> String {
+        guard let descriptions = try? await track.load(.formatDescriptions), let d = descriptions.first else {
+            return "sin descripción de formato"
+        }
+        let codec: String = fourCC(CMFormatDescriptionGetMediaSubType(d))
+        let dims: CMVideoDimensions = CMVideoFormatDescriptionGetDimensions(d)
+        let ext: [CFString: Any] = (CMFormatDescriptionGetExtensions(d) as? [CFString: Any]) ?? [:]
+        let transfer: String = (ext[kCMFormatDescriptionExtension_TransferFunction] as? String) ?? "-"
+        let primaries: String = (ext[kCMFormatDescriptionExtension_ColorPrimaries] as? String) ?? "-"
+        let matrix: String = (ext[kCMFormatDescriptionExtension_YCbCrMatrix] as? String) ?? "-"
+        let depth: String = (ext[kCMFormatDescriptionExtension_Depth] as? NSNumber)?.stringValue ?? "-"
+        let fullRange: String = (ext[kCMFormatDescriptionExtension_FullRangeVideo] as? Bool).map { $0 ? "sí" : "no" } ?? "-"
+        return "códec \(codec), \(dims.width)x\(dims.height), profundidad \(depth), transferencia \(transfer), "
+            + "primarios \(primaries), matriz \(matrix), rango completo \(fullRange)"
+    }
+
+    /// Pixel format, layout, byte ranges per channel (sampled grid) and colour attachments of a decoded buffer.
+    static func describe(buffer: CVPixelBuffer) -> String {
+        let formatType: OSType = CVPixelBufferGetPixelFormatType(buffer)
+        let width: Int = CVPixelBufferGetWidth(buffer)
+        let height: Int = CVPixelBufferGetHeight(buffer)
+        let bpr: Int = CVPixelBufferGetBytesPerRow(buffer)
+        let planes: Int = CVPixelBufferGetPlaneCount(buffer)
+        let surface: Bool = CVPixelBufferGetIOSurface(buffer) != nil
+        var ranges = "-"
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        if formatType == kCVPixelFormatType_32BGRA, let base = CVPixelBufferGetBaseAddress(buffer) {
+            let bytes: UnsafeMutablePointer<UInt8> = base.assumingMemoryBound(to: UInt8.self)
+            var lo: [Int] = [255, 255, 255, 255]
+            var hi: [Int] = [0, 0, 0, 0]
+            for y in Swift.stride(from: 0, to: height, by: 37) {
+                for x in Swift.stride(from: 0, to: width, by: 41) {
+                    for c in 0..<4 {
+                        let v: Int = Int(bytes[y * bpr + 4 * x + c])
+                        lo[c] = min(lo[c], v)
+                        hi[c] = max(hi[c], v)
+                    }
+                }
+            }
+            ranges = "B \(lo[0])-\(hi[0]) G \(lo[1])-\(hi[1]) R \(lo[2])-\(hi[2]) A \(lo[3])-\(hi[3])"
+        }
+        CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
+        let attachments: [String: Any] = (CVBufferCopyAttachments(buffer, .shouldPropagate) as? [String: Any]) ?? [:]
+        let transfer: String = (attachments[kCVImageBufferTransferFunctionKey as String] as? String) ?? "-"
+        let primaries: String = (attachments[kCVImageBufferColorPrimariesKey as String] as? String) ?? "-"
+        return "píxeles \(fourCC(formatType)) \(width)x\(height), \(bpr) bytes/fila, planos \(planes), IOSurface \(surface ? "sí" : "no"), "
+            + "bytes \(ranges), transferencia \(transfer), primarios \(primaries)"
     }
 
     /// Upright (track rotation applied) and scaled by `range.factor`.

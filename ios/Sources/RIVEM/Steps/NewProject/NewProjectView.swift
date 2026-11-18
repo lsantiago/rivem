@@ -55,7 +55,7 @@ struct NewProjectView: View {
                         Label("Grabar con la cámara", systemImage: "video.fill")
                     }
                     #endif
-                    PhotosPicker(selection: $photoItem, matching: .videos) {
+                    PhotosPicker(selection: $photoItem, matching: .videos, preferredItemEncoding: .current) {
                         Label("Elegir de Fotos", systemImage: "photo.on.rectangle")
                     }
                     Button {

@@ -105,7 +105,7 @@ enum FramesPipeline {
         let started = Date()
         let extractor = FrameExtractor(video: video, range: range)
         let framesFolder: URL = project.folder.appendingPathComponent(RiverProject.framesFolder)
-        let written: Int = try await extractor.extract(into: framesFolder, progress: progress)
+        let (written, method) = try await extractor.extractReporting(into: framesFolder, progress: progress)
         var updated = project
         try saveRange(&updated, range)
         if updated.settings.pivResultsPath != nil {
@@ -116,7 +116,7 @@ enum FramesPipeline {
         let after = ProjectFiles.frameSize(updated)
         var changed = false
         if let b = before, let a = after, hadMatrix, b.width != a.width || b.height != a.height { changed = true }
-        AppLog.info("Frames extraídos: \(written) (inicio \(range.start), fin \(range.end), paso \(range.step), factor \(range.factor)) "
+        AppLog.info("Frames extraídos: \(written) con \(method.rawValue) (inicio \(range.start), fin \(range.end), paso \(range.step), factor \(range.factor)) "
             + "en \(String(format: "%.1f", Date().timeIntervalSince(started))) s")
         return Outcome(project: updated, written: written, sizeChanged: changed)
     }

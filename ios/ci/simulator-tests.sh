@@ -113,6 +113,10 @@ if [ -f "$VIDEO" ] && ! grep -q "^PASS video miniatura del lienzo" screenshots/a
   echo "The real-video frames/thumbnail check did not pass"
   STATUS=1
 fi
+if [ -f "$VIDEO" ] && ! grep -q "^PASS video extraccion alternativa" screenshots/autotest_summary.txt 2>/dev/null; then
+  echo "The AVAssetImageGenerator fallback check did not pass"
+  STATUS=1
+fi
 if grep -q "^FAIL" screenshots/autotest_summary.txt 2>/dev/null; then
   echo "Some checks failed:"
   grep "^FAIL" screenshots/autotest_summary.txt

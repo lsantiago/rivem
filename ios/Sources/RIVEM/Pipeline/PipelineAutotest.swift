@@ -242,6 +242,30 @@ enum VideoAutotest {
             }
             report("brillo primer frame", firstMean > 20 && firstMean < 235, "brillo medio \(Fmt.num(firstMean, 1)) (0-255)")
 
+            // Fallback path (AVAssetImageGenerator, used when the reader returns black buffers on a device): same
+            // frame count and file N.jpg must hold the same source frame as the reader's N.jpg (closer to it than
+            // to the next extracted frame).
+            let altFolder: URL = FileManager.default.temporaryDirectory.appendingPathComponent("autotest-generator", isDirectory: true)
+            var alt = FrameExtractor(video: source, range: range)
+            alt.forceGenerator = true
+            let altOutcome = try await alt.extractReporting(into: altFolder)
+            let altFrames: [URL] = ((try? FileManager.default.contentsOfDirectory(at: altFolder, includingPropertiesForKeys: nil)) ?? [])
+                .filter { $0.pathExtension == "jpg" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+            var same: Double = -1
+            var next: Double = -1
+            if frames.count >= 2, altFrames.count == frames.count,
+               let a0 = try? ImageCoding.cgImage(contentsOf: altFrames[0]),
+               let r0 = try? ImageCoding.cgImage(contentsOf: frames[0]),
+               let r1 = try? ImageCoding.cgImage(contentsOf: frames[1]) {
+                same = meanAbsDiff(a0, r0)
+                next = meanAbsDiff(a0, r1)
+            }
+            report("extraccion alternativa", altOutcome.method == .generator && altOutcome.written == outcome.written
+                   && altFrames.map(\.lastPathComponent) == frames.map(\.lastPathComponent) && same >= 0 && same < next && same < 4,
+                   "\(altOutcome.written) frames con AVAssetImageGenerator; diferencia media con el mismo frame del lector "
+                   + "\(Fmt.num(same, 2)), con el siguiente \(Fmt.num(next, 2)) (0-255)")
+            try? FileManager.default.removeItem(at: altFolder)
+
             // The image the canvases draw: WorkflowModel's thumbnail.
             let model = WorkflowModel(folder: project.folder)
             let thumbMean: Double = model.firstFrame.map { ImageCoding.meanLuminance($0) } ?? -1
@@ -270,6 +294,21 @@ enum VideoAutotest {
             report("ejecucion", false, "\(error)")
         }
         return lines
+    }
+
+    /// Mean absolute difference (0–255) of the luminance of two images, compared at 480 px wide.
+    static func meanAbsDiff(_ a: CGImage, _ b: CGImage) -> Double {
+        let w = 480
+        let h: Int = max(1, Int((Double(w) * Double(a.height) / Double(max(a.width, 1))).rounded()))
+        let x: RGBAImage = ImageCoding.rgba(a, width: w, height: h)
+        let y: RGBAImage = ImageCoding.rgba(b, width: w, height: h)
+        var sum = 0.0
+        for i in 0..<(w * h) {
+            let lx: Double = 0.299 * Double(x.bytes[4 * i]) + 0.587 * Double(x.bytes[4 * i + 1]) + 0.114 * Double(x.bytes[4 * i + 2])
+            let ly: Double = 0.299 * Double(y.bytes[4 * i]) + 0.587 * Double(y.bytes[4 * i + 1]) + 0.114 * Double(y.bytes[4 * i + 2])
+            sum += abs(lx - ly)
+        }
+        return sum / Double(w * h)
     }
 }
 
