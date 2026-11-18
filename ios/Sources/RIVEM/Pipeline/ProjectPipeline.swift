@@ -30,11 +30,17 @@ enum ProjectCreation {
     /// project anyway and offers "Locate" when the path does not exist (§6.2).
     /// - Parameter moveSource: move (temporary copies from Photos / the camera) instead of copying.
     static func create(root: URL, name: String, footage: Footage, source: URL, metadata: VideoMetadata,
-                       moveSource: Bool) throws -> RiverProject {
+                       moveSource: Bool, riverName: String = "", site: String = "") throws -> RiverProject {
         let fileName: String = videoFileName(for: source)
         let info = VideoInfo(filepath: fileName, name: fileName, duration: metadata.duration, fps: metadata.fps,
                              width: metadata.width, height: metadata.height)
-        let project = try RiverProject.create(in: root, name: safeName(name), footage: footage, video: info)
+        var project = try RiverProject.create(in: root, name: safeName(name), footage: footage, video: info)
+        if !riverName.isEmpty || !site.isEmpty {
+            // Desktop writes these metadata keys at the report step (`setProjectMetadata.ts`).
+            if !riverName.isEmpty { project.settings.json["river_name"] = .string(riverName) }
+            if !site.isEmpty { project.settings.json["site"] = .string(site) }
+            try project.save()
+        }
         let dest: URL = project.folder.appendingPathComponent(fileName)
         do {
             if moveSource {

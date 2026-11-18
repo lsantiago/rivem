@@ -12,6 +12,8 @@ UDID="$1"
 APP="$2"
 BUNDLE=com.rivem.app
 FIXTURE=../ci/testdata/desktop-projects/oblique-pisco
+# RIVeR's example nadir video (downloaded by ios.yml); when present, -autotest_video extracts real frames from it.
+VIDEO=${RIVEM_TEST_VIDEO:-build-data/canuelas.mp4}
 STATUS=0
 
 mkdir -p screenshots
@@ -31,9 +33,16 @@ PROJ="$DATA/Documents/RIVeR/pisco/20250310T1542"
 mkdir -p "$PROJ/frames"
 cp "$FIXTURE"/*.json "$FIXTURE"/*.csv "$PROJ/"
 
-# ---------- synthetic pipeline + self-check + project checks ----------
+# ---------- synthetic pipeline + real video + self-check + project checks ----------
+VIDEO_ARGS=()
+if [ -f "$VIDEO" ]; then
+  cp "$VIDEO" "$DATA/Documents/$(basename "$VIDEO")"
+  VIDEO_ARGS=(-autotest_video "$(basename "$VIDEO")")
+else
+  echo "No test video at $VIDEO: the real-video extraction check is skipped"
+fi
 rm -f "$DATA/Documents/autotest_done" "$DATA/Documents/autotest_summary.txt"
-xcrun simctl launch "$UDID" "$BUNDLE" -autotest_selfcheck 1 -autotest_pipeline 1
+xcrun simctl launch "$UDID" "$BUNDLE" -autotest_selfcheck 1 -autotest_pipeline 1 "${VIDEO_ARGS[@]}"
 done_flag=0
 for _ in $(seq 1 150); do
   sleep 2
@@ -62,6 +71,11 @@ shot 06_sections autotest_sintetico sections
 shot 07_processing autotest_sintetico processing
 shot 08_results autotest_sintetico results 10
 shot 09_export autotest_sintetico export
+if [ -f "$VIDEO" ]; then
+  shot 10_video_frames autotest_video video
+  shot 11_video_geometry autotest_video geometry
+  shot 12_video_sections autotest_video sections
+fi
 
 # The app must not have rewritten the desktop files just by opening them.
 for f in settings.json xsections.json transformation_matrix.json; do
@@ -93,6 +107,10 @@ if ! grep -q "^PASS proyecto pisco/20250310T1542" screenshots/autotest_summary.t
 fi
 if ! grep -q "^PASS pipeline caudal" screenshots/autotest_summary.txt 2>/dev/null; then
   echo "The synthetic discharge check did not pass"
+  STATUS=1
+fi
+if [ -f "$VIDEO" ] && ! grep -q "^PASS video miniatura del lienzo" screenshots/autotest_summary.txt 2>/dev/null; then
+  echo "The real-video frames/thumbnail check did not pass"
   STATUS=1
 fi
 if grep -q "^FAIL" screenshots/autotest_summary.txt 2>/dev/null; then

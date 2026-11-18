@@ -77,6 +77,12 @@ jobs:
           name: RIVEM-unsigned-ipa
           path: ios/RIVEM-unsigned.ipa
 
+      - name: Download RIVeR's example video (real-video extraction autotest)
+        run: |
+          mkdir -p build-data
+          curl -fL --retry 3 -o build-data/canuelas.mp4             https://raw.githubusercontent.com/oruscam/RIVeR/ea65612/examples/data/videos/nadir/canuelas.mp4
+          ls -la build-data
+
       - name: Simulator smoke run + on-device self-check
         run: bash ci/simulator-tests.sh "$UDID" build-sim/Build/Products/Release-iphonesimulator/RIVEM.app
 

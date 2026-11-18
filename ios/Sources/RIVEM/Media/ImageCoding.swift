@@ -105,6 +105,20 @@ enum ImageCoding {
         return RGBAImage(width: gray.width, height: gray.height, bytes: bytes)
     }
 
+    /// Mean luminance (0–255) of an image, on a 64-pixel-wide downscaled copy (cheap "is it black?" check).
+    static func meanLuminance(_ image: CGImage) -> Double {
+        guard image.width > 0, image.height > 0 else { return 0 }
+        let w = 64
+        let h: Int = max(1, Int((Double(w) * Double(image.height) / Double(image.width)).rounded()))
+        let small: RGBAImage = rgba(image, width: w, height: h)
+        var sum = 0.0
+        for i in 0..<(w * h) {
+            let r = Double(small.bytes[4 * i]), g = Double(small.bytes[4 * i + 1]), b = Double(small.bytes[4 * i + 2])
+            sum += 0.299 * r + 0.587 * g + 0.114 * b
+        }
+        return sum / Double(w * h)
+    }
+
     /// Pixel size of an image file without decoding it.
     static func pixelSize(of url: URL) -> (width: Int, height: Int)? {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),

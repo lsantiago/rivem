@@ -50,10 +50,13 @@ enum SelfCheck {
 /// Screenshot hooks (no checks): `-autotest_open_first 1` opens the first project of the list, and
 /// `-autotest_open_project <name> -autotest_step <step>` opens the project whose name folder is `<name>` at a
 /// workflow step (`WorkflowStep` raw values: summary, video, geometry, sections, processing, results, export; `list`
-/// shows the step list).
+/// shows the step list). `-autotest_video <file>` runs `VideoAutotest` on a real video copied into Documents.
 enum Autotest {
     static var isPipelineRequested: Bool { UserDefaults.standard.bool(forKey: "autotest_pipeline") }
     static var isSelfCheckRequested: Bool { UserDefaults.standard.bool(forKey: "autotest_selfcheck") }
+
+    /// `-autotest_video <file in Documents>`: real-video extraction check (`VideoAutotest`).
+    static var videoToTest: String? { UserDefaults.standard.string(forKey: "autotest_video") }
 
     static var projectToOpen: String? { UserDefaults.standard.string(forKey: "autotest_open_project") }
 
@@ -66,7 +69,7 @@ enum Autotest {
 
     @MainActor
     static func runIfRequested(workspace: Workspace) async {
-        guard isSelfCheckRequested || isPipelineRequested else { return }
+        guard isSelfCheckRequested || isPipelineRequested || videoToTest != nil else { return }
         var lines: [String] = []
         if isPipelineRequested {
             let root: URL = workspace.root
@@ -74,6 +77,13 @@ enum Autotest {
                 PipelineAutotest.run(root: root)
             }.value
             lines.append(contentsOf: pipelineLines)
+        }
+        if let video = videoToTest {
+            let root: URL = workspace.root
+            let videoLines: [String] = await Task.detached(priority: .userInitiated) { () async -> [String] in
+                await VideoAutotest.run(root: root, videoName: video)
+            }.value
+            lines.append(contentsOf: videoLines)
         }
         lines.append(contentsOf: SelfCheck.run().map { "\($0.passed ? "PASS" : "FAIL") \($0.name): \($0.detail)" })
         workspace.reload()

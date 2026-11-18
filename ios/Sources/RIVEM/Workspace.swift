@@ -10,6 +10,7 @@ struct ProjectSummary: Identifiable, Hashable {
     private(set) var footage: Footage?
     private(set) var stage: ProjectStage = .created
     private(set) var riverName: String?
+    private(set) var site: String?
     private(set) var sectionCount = 0
     private(set) var issues: [String] = []
     private(set) var loadError: String?
@@ -25,6 +26,7 @@ struct ProjectSummary: Identifiable, Hashable {
             footage = p.settings.footage
             stage = p.settings.stage
             riverName = p.settings.riverName
+            site = p.settings.site
             sectionCount = (try? p.readCrossSections()?.sections.count) ?? 0
             issues = p.compatibilityIssues().map(\.message)
         } catch {

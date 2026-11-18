@@ -30,6 +30,10 @@ struct NewProjectView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var name: String = ""
+    /// The name was proposed by the app (not typed): choosing another video may replace it.
+    @State private var nameIsAuto = true
+    @State private var river: String = ""
+    @State private var site: String = ""
     @State private var footage: Footage = .oblique
     /// Temporary copy owned by the app (Photos, camera or a copy from Files): it is moved into the project.
     @State private var videoURL: URL? = nil
@@ -72,8 +76,16 @@ struct NewProjectView: View {
                     Text(footageHint).font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Nombre") {
-                    TextField("Río o sitio", text: $name)
+                    TextField("Nombre del aforo", text: Binding<String>(
+                        get: { name },
+                        set: { value in
+                            name = value
+                            nameIsAuto = false
+                        }
+                    ))
                     Text("Carpeta: RIVeR/\(ProjectCreation.safeName(name))/fecha").font(.caption).foregroundStyle(.secondary)
+                    TextField("Río (opcional)", text: $river)
+                    TextField("Sitio (opcional)", text: $site)
                 }
                 Section {
                     Button {
@@ -106,7 +118,7 @@ struct NewProjectView: View {
             #if os(iOS)
             .fullScreenCover(isPresented: $showingCamera) {
                 CameraRecorderView { url in
-                    useVideo(url)
+                    useVideo(url, suggestedName: nil)
                 }
             }
             #endif
@@ -121,12 +133,23 @@ struct NewProjectView: View {
         }
     }
 
-    private func useVideo(_ url: URL) {
+    /// `aforo_YYYYMMDD_HHMM`: Photos and the camera only give temporary (UUID) file names.
+    static func defaultName(_ date: Date = Date()) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyyMMdd_HHmm"
+        return "aforo_" + f.string(from: date)
+    }
+
+    private func useVideo(_ url: URL, suggestedName: String?) {
         discardTemporaryVideo()
         videoURL = url
         metadata = nil
         error = nil
-        if name.isEmpty { name = url.deletingPathExtension().lastPathComponent }
+        if nameIsAuto || name.isEmpty {
+            name = suggestedName ?? Self.defaultName()
+            nameIsAuto = true
+        }
         busy = true
         Task { @MainActor in
             do {
@@ -148,7 +171,7 @@ struct NewProjectView: View {
                     throw PipelineError("Fotos no entregó el video.")
                 }
                 busy = false
-                useVideo(movie.url)
+                useVideo(movie.url, suggestedName: nil)
             } catch {
                 self.error = "No se pudo importar desde Fotos: \(error.localizedDescription)"
                 AppLog.error("Importar de Fotos: \(error)")
@@ -166,7 +189,7 @@ struct NewProjectView: View {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let dest: URL = folder.appendingPathComponent(picked.lastPathComponent)
             try FileManager.default.copyItem(at: picked, to: dest)
-            useVideo(dest)
+            useVideo(dest, suggestedName: picked.deletingPathExtension().lastPathComponent)
         } catch {
             self.error = "No se pudo copiar el video: \(error.localizedDescription)"
         }
@@ -180,7 +203,9 @@ struct NewProjectView: View {
 
     private func create() {
         guard let url = videoURL, let meta = metadata else { return }
-        let projectName: String = name.isEmpty ? "aforo" : name
+        let projectName: String = name.isEmpty ? Self.defaultName() : name
+        let riverName: String = river.trimmingCharacters(in: .whitespacesAndNewlines)
+        let siteName: String = site.trimmingCharacters(in: .whitespacesAndNewlines)
         let kind: Footage = footage
         let root: URL = workspace.root
         busy = true
@@ -188,7 +213,8 @@ struct NewProjectView: View {
         Task { @MainActor in
             do {
                 let project: RiverProject = try await Task.detached(priority: .userInitiated) { () throws -> RiverProject in
-                    try ProjectCreation.create(root: root, name: projectName, footage: kind, source: url, metadata: meta, moveSource: true)
+                    try ProjectCreation.create(root: root, name: projectName, footage: kind, source: url, metadata: meta, moveSource: true,
+                                                 riverName: riverName, site: siteName)
                 }.value
                 videoURL = nil
                 workspace.reload()

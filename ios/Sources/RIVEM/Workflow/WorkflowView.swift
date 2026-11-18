@@ -64,6 +64,9 @@ private struct WorkflowHeader: View {
             if let error = model.loadError {
                 Label(error, systemImage: "xmark.octagon").foregroundStyle(.red)
             } else if let s = model.settings {
+                if let river = s.riverName, !river.isEmpty { LabeledContent("Río", value: river) }
+                if let site = s.site, !site.isEmpty { LabeledContent("Sitio", value: site) }
+                LabeledContent("Carpeta", value: model.folder.deletingLastPathComponent().lastPathComponent + "/" + model.folder.lastPathComponent)
                 LabeledContent("Tipo de toma", value: s.footage?.label ?? "desconocido")
                 LabeledContent("Etapa", value: s.stage.label)
                 LabeledContent("Frames", value: "\(model.frameCount)")

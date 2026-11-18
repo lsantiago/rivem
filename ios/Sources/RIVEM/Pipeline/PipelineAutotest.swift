@@ -74,10 +74,24 @@ enum PipelineAutotest {
             let csvURL: URL = FileManager.default.temporaryDirectory.appendingPathComponent("autotest_batimetria.csv")
             try Data(bathymetryCSV.utf8).write(to: csvURL, options: .atomic)
             let imported = try SectionsPipeline.importBathymetry(from: csvURL, into: project.folder, feet: false)
+            // Same profile from the in-app editor's trapezoidal template (water width 12 m, depth 1 m, banks 2:1,
+            // no freeboard, level 2 m): it must give the very same normalised CSV, and it is the one the section uses.
+            let template: Bathymetry = try BathymetryTemplates.make(.trapezoidal, waterWidth: 12, depth: 1, bankSlope: 2,
+                                                                    freeboard: 0, level: 2)
+            let templateFile: String = try SectionsPipeline.writeBathymetry(
+                template, fileName: SectionsPipeline.editorFileName(section: "CS_autotest"), into: project.folder)
+            let importedText: String = (try? String(contentsOf: project.resolve(imported.file), encoding: .utf8)) ?? "?"
+            let templateText: String = (try? String(contentsOf: project.resolve(templateFile), encoding: .utf8)) ?? "!"
+            let templateArea: Double = BathymetryTemplates.area(.trapezoidal, waterWidth: 12, depth: 1, bankSlope: 2)
+            report("batimetria plantilla", importedText == templateText && templateText.hasPrefix("station,stage
+")
+                   && abs(templateArea - expectedArea) < 1e-12,
+                   "\(templateFile) = \(imported.file) (\(template.stations.count) puntos), área de la plantilla \(Fmt.num(templateArea, 3)) m2")
             var draft = SectionDraft(name: "CS_autotest")
             draft.left = lineLeft
             draft.right = lineRight
-            draft.bathymetryFile = imported.file
+            draft.bathymetryFile = templateFile
+            draft.level = 2
             draft.numStations = numStations
             draft.alpha = alpha
             let sections: SectionsOutcome = try SectionsPipeline.save(&project, drafts: [draft])
@@ -176,6 +190,87 @@ enum PipelineAutotest {
             guard let cg = ImageCoding.cgImage(rgba) else { throw PipelineError("no se pudo crear el frame sintético \(k)") }
             try ImageCoding.writeJPEG(cg, to: framesFolder.appendingPathComponent(RiverProject.frameFileName(k)))
         }
+    }
+}
+
+/// Real-video check (`simctl launch … -autotest_video canuelas.mp4`, the video copied into Documents by the CI): a
+/// project is created and its frames extracted through the same code as the screens (`ProjectCreation`,
+/// `FramesPipeline.extract` → `FrameExtractor` with AVAssetReader), 2 s at step 2; then the first frame and the
+/// thumbnail the canvases draw are checked not to be black. A UAV geometry and a section with a template bathymetry
+/// are added so the CI can screenshot the geometry and sections steps on a real frame.
+enum VideoAutotest {
+    static let projectName = "autotest_video"
+
+    static func run(root: URL, videoName: String) async -> [String] {
+        var lines: [String] = []
+        func report(_ name: String, _ ok: Bool, _ detail: String) {
+            let line = "\(ok ? "PASS" : "FAIL") video \(name): \(detail)"
+            lines.append(line)
+            if ok { AppLog.info(line) } else { AppLog.error(line) }
+        }
+        let docs: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let source: URL = docs.appendingPathComponent(videoName)
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            report("archivo", false, "no está \(videoName) en Documents")
+            return lines
+        }
+        do {
+            try? FileManager.default.removeItem(at: root.appendingPathComponent(projectName))
+            // Evidence for the black-frame investigation (old Core Image path vs. current CPU path).
+            let diagnosis: String = await FrameExtractor.diagnoseFirstFrame(source)
+            report("diagnostico primer frame", !diagnosis.hasPrefix("error"), diagnosis)
+
+            let metadata: VideoMetadata = try await VideoMetadata.load(source)
+            var project: RiverProject = try ProjectCreation.create(root: root, name: projectName, footage: .uav, source: source,
+                                                                   metadata: metadata, moveSource: false,
+                                                                   riverName: "Cañuelas (ejemplo de RIVeR)", site: "autotest")
+            report("metadatos", metadata.width == 1920 && metadata.height == 1080 && metadata.fps > 0,
+                   "\(metadata.width)x\(metadata.height), \(Fmt.num(metadata.fps, 3)) fps, \(Fmt.num(metadata.duration, 2)) s")
+
+            let range: VideoRange = FramesPipeline.range(startTime: 0, endTime: 2, step: 2, factor: 1, fps: Double(Int(metadata.fps.rounded())))
+            let outcome: FramesPipeline.Outcome = try await FramesPipeline.extract(project, range: range, progress: { _ in })
+            project = outcome.project
+            let frames: [URL] = project.frameFiles
+            let size = frames.first.flatMap { ImageCoding.pixelSize(of: $0) }
+            let sizeOK: Bool = size?.width == 1920 && size?.height == 1080
+            report("frames", outcome.written == range.frameIndices.count && frames.count == outcome.written && sizeOK,
+                   "\(outcome.written) frames (\(range.frameIndices.count) esperados), \(size?.width ?? 0)x\(size?.height ?? 0), "
+                   + "primero \(frames.first?.lastPathComponent ?? "-")")
+
+            var firstMean: Double = -1
+            if let first = frames.first, let cg = try? ImageCoding.cgImage(contentsOf: first) {
+                firstMean = ImageCoding.meanLuminance(cg)
+            }
+            report("brillo primer frame", firstMean > 20 && firstMean < 235, "brillo medio \(Fmt.num(firstMean, 1)) (0-255)")
+
+            // The image the canvases draw: WorkflowModel's thumbnail.
+            let model = WorkflowModel(folder: project.folder)
+            let thumbMean: Double = model.firstFrame.map { ImageCoding.meanLuminance($0) } ?? -1
+            report("miniatura del lienzo", model.firstFrame != nil && thumbMean > 20,
+                   "\(model.firstFrame?.width ?? 0)x\(model.firstFrame?.height ?? 0), brillo medio \(Fmt.num(thumbMean, 1)), "
+                   + "tamaño de frame \(Int(model.frameSize.width))x\(Int(model.frameSize.height))")
+
+            // Geometry + a section with a template bathymetry (for the screenshots of steps 2 and 3).
+            let frame: RGBAImage = try GeometryPipeline.loadFirstFrame(project)
+            _ = try GeometryPipeline.applyUAV(&project, pixel1: Point2(360, 540), pixel2: Point2(1560, 540),
+                                              world1: Point2(0, 0), world2: Point2(24, 0), frame: frame)
+            let bathymetry: Bathymetry = try BathymetryTemplates.make(.rectangular, waterWidth: 20, depth: 1.2, bankSlope: 0,
+                                                                      freeboard: 0.5, level: 10)
+            let file: String = try SectionsPipeline.writeBathymetry(
+                bathymetry, fileName: SectionsPipeline.editorFileName(section: "CS_1"), into: project.folder)
+            var draft = SectionDraft(name: "CS_1")
+            draft.left = Point2(410, 620)
+            draft.right = Point2(1510, 600)
+            draft.bathymetryFile = file
+            draft.level = 10
+            let sections: SectionsOutcome = try SectionsPipeline.save(&project, drafts: [draft])
+            let width: Double = sections.sections.sections.first?.realWorldLength ?? 0
+            report("geometria y seccion", abs(width - 20) < 0.01 && sections.analysedPixels > 0,
+                   "ancho mojado \(Fmt.num(width, 3)) m (plantilla rectangular 20 m), altura ROI \(Fmt.num(sections.heightROI, 1)) m")
+        } catch {
+            report("ejecucion", false, "\(error)")
+        }
+        return lines
     }
 }
 

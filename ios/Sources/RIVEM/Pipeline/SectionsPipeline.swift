@@ -71,6 +71,21 @@ enum SectionsPipeline {
         try Bathymetry.read(project.resolve(file))
     }
 
+    /// File name of a bathymetry made in the app's editor for a section.
+    static func editorFileName(section: String) -> String {
+        ProjectCreation.safeName(section, fallback: "seccion") + "_batimetria.csv"
+    }
+
+    /// Writes a bathymetry made in the app (editor, template, pasted CSV) as the same normalised `station,stage` CSV
+    /// the import produces. The editor owns `fileName`, so an existing file with that name is replaced.
+    static func writeBathymetry(_ bathymetry: Bathymetry, fileName: String, into folder: URL) throws -> String {
+        // Round trip through the parser: same normalisation (increasing stations, ≥ 2 points) as an imported file.
+        let normalised: Bathymetry = try Bathymetry.parse(csv: bathymetry.csv)
+        try normalised.write(folder.appendingPathComponent(fileName))
+        AppLog.info("Batimetría escrita como \(fileName): \(normalised.stations.count) puntos")
+        return fileName
+    }
+
     /// Desktop's default water level for a bathymetry (`getBathimetryLimitsY`), nil if the level does not cross it.
     static func defaultLevel(_ bathymetry: Bathymetry) -> Double? {
         (try? SectionBuilder.limits(bathymetry: bathymetry, level: nil))?.level

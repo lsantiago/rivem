@@ -13,6 +13,7 @@ struct SectionsStepView: View {
     @State private var selectedID: UUID? = nil
     @State private var bathymetries: [String: Bathymetry] = [:]
     @State private var importing = false
+    @State private var editingBathymetry = false
     @State private var busy = false
     @State private var error: String? = nil
     @State private var message: String? = nil
@@ -34,6 +35,14 @@ struct SectionsStepView: View {
         .onAppear(perform: load)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .data]) { result in
             importBathymetry(result)
+        }
+        .sheet(isPresented: $editingBathymetry) {
+            if let i = selectedIndex {
+                BathymetryEditorView(sectionName: drafts[i].name,
+                                     initial: drafts[i].bathymetryFile.flatMap { bathymetries[$0] }) { b, level in
+                    useEditedBathymetry(b, level: level)
+                }
+            }
         }
     }
 
@@ -59,7 +68,8 @@ struct SectionsStepView: View {
                                    bathymetry: drafts[i].bathymetryFile.flatMap { bathymetries[$0] },
                                    isIpcam: model.footage == .ipcam,
                                    isFirst: i == 0,
-                                   importBathymetry: { importing = true })
+                                   importBathymetry: { importing = true },
+                                   editBathymetry: { editingBathymetry = true })
             }
             Section {
                 Button {
@@ -68,6 +78,9 @@ struct SectionsStepView: View {
                     if busy { ProgressView() } else { Label("Guardar secciones y máscara", systemImage: "square.and.arrow.down") }
                 }
                 .disabled(busy || drafts.isEmpty || drafts.contains(where: { !$0.isComplete }))
+                if let missing = missingSummary {
+                    Text(missing).font(.callout).foregroundStyle(.orange)
+                }
                 if let m = message { Text(m).font(.callout) }
                 ErrorBanner(message: error)
             } footer: {
@@ -79,8 +92,37 @@ struct SectionsStepView: View {
     private func instruction(_ d: SectionDraft) -> String {
         if d.left == nil { return "Toca la margen izquierda de \(d.name) sobre la imagen." }
         if d.right == nil { return "Toca la margen derecha." }
-        if d.bathymetryFile == nil { return "Importa la batimetría de la sección." }
+        if d.bathymetryFile == nil {
+            return "Falta la batimetría: impórtala (CSV) o créala con el editor (plantilla rectangular/trapezoidal, tabla o CSV pegado)."
+        }
         return "Arrastra los extremos para ajustar la línea."
+    }
+
+    /// What is still missing before the sections can be saved, per section.
+    private var missingSummary: String? {
+        var lines: [String] = []
+        for d in drafts {
+            var missing: [String] = []
+            if d.left == nil || d.right == nil { missing.append("la línea (dos toques sobre la imagen)") }
+            if d.bathymetryFile == nil { missing.append("la batimetría") }
+            if !missing.isEmpty { lines.append("\(d.name): falta " + missing.joined(separator: " y ")) }
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: "
+")
+    }
+
+    private func useEditedBathymetry(_ b: Bathymetry, level: Double?) {
+        guard let i = selectedIndex, let project = model.project else { return }
+        do {
+            let name: String = SectionsPipeline.editorFileName(section: drafts[i].name)
+            let file: String = try SectionsPipeline.writeBathymetry(b, fileName: name, into: project.folder)
+            bathymetries[file] = try SectionsPipeline.readBathymetry(project, file: file)
+            drafts[i].bathymetryFile = file
+            drafts[i].level = level
+            error = nil
+        } catch {
+            self.error = "No se pudo guardar la batimetría: \(error)"
+        }
     }
 
     private var canvasPoints: [CanvasPoint] {
@@ -227,14 +269,24 @@ private struct SectionDraftEditor: View {
     let isIpcam: Bool
     let isFirst: Bool
     let importBathymetry: () -> Void
+    let editBathymetry: () -> Void
 
     var body: some View {
         Section("Datos de la sección") {
             LabeledContent("Nombre") {
                 TextField("CS_1", text: $draft.name).multilineTextAlignment(.trailing)
             }
+            if let file = draft.bathymetryFile {
+                LabeledContent("Batimetría", value: file)
+            } else {
+                Text("Sin batimetría").foregroundStyle(.orange)
+            }
             Button(action: importBathymetry) {
-                Label(draft.bathymetryFile ?? "Importar batimetría (CSV)", systemImage: "chart.xyaxis.line")
+                Label("Importar batimetría (CSV)", systemImage: "square.and.arrow.down")
+            }
+            Button(action: editBathymetry) {
+                Label(draft.bathymetryFile == nil ? "Crear batimetría (plantilla o tabla)" : "Editar batimetría",
+                      systemImage: "chart.xyaxis.line")
             }
             LevelEditor(draft: $draft, defaultLevel: bathymetry.flatMap { SectionsPipeline.defaultLevel($0) })
             if isIpcam && !isFirst {

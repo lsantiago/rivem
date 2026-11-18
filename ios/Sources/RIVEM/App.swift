@@ -186,7 +186,7 @@ struct ProjectRow: View {
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 2) {
                 Text(project.riverName ?? project.name).font(.headline)
-                Text("\(project.stamp) · \(project.stage.label)")
+                Text(project.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -195,5 +195,17 @@ struct ProjectRow: View {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
             }
         }
+    }
+}
+
+extension ProjectSummary {
+    /// "río · sitio" if set, then the folder name and stamp and the stage reached.
+    var subtitle: String {
+        var parts: [String] = []
+        if let s = site, !s.isEmpty { parts.append(s) }
+        if riverName != nil { parts.append(name) }
+        parts.append(stamp)
+        parts.append(stage.label)
+        return parts.joined(separator: " · ")
     }
 }
