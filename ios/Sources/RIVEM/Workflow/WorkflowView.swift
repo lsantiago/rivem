@@ -110,9 +110,9 @@ private struct WorkflowStepRow: View {
     }
 }
 
-/// The screen of one step, as a wizard like desktop's: a progress bar on top (tap a segment to jump), previous /
+/// The screen of one step, as a wizard like desktop's: a numbered stepper on top (tap a step to jump), previous /
 /// next at the bottom (next is highlighted once the step is done, and says what is missing when it is not
-/// available yet), and a menu with every step. Moving between steps replaces the content in place, so going on
+/// available yet). The project summary is the screen behind (back button). Moving between steps replaces the content in place, so going on
 /// never needs a trip back to the step list.
 struct WorkflowStepScreen: View {
     let model: WorkflowModel
@@ -131,9 +131,6 @@ struct WorkflowStepScreen: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) { stepMenu }
-            }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if WorkflowStep.wizard.contains(current) {
                     StepProgressBar(current: current, model: model, go: go)
@@ -150,27 +147,6 @@ struct WorkflowStepScreen: View {
         model.reload()
         guard step != current, model.isAvailable(step) else { return }
         withAnimation(.easeInOut(duration: 0.2)) { current = step }
-    }
-
-    private var stepMenu: some View {
-        Menu {
-            ForEach(WorkflowStep.allCases) { (s: WorkflowStep) in
-                Button {
-                    go(s)
-                } label: {
-                    if s == current {
-                        Label(s.title, systemImage: "arrowtriangle.right.fill")
-                    } else if model.isDone(s) {
-                        Label(s.title, systemImage: "checkmark.circle.fill")
-                    } else {
-                        Label(s.title, systemImage: s.symbol)
-                    }
-                }
-                .disabled(!model.isAvailable(s))
-            }
-        } label: {
-            Label("Pasos", systemImage: "list.bullet")
-        }
     }
 
     @ViewBuilder
@@ -260,8 +236,10 @@ private struct StepProgressBar: View {
                 .overlay(Text("\(number)").font(.system(size: 14, weight: .bold)).foregroundStyle(.white))
                 .shadow(color: Color.accentColor.opacity(0.5), radius: 4)
         case .done:
+            // Opaque base so the connector line does not show through the check.
             Circle()
-                .fill(Color.accentColor.opacity(0.18))
+                .fill(Color(.systemBackground))
+                .overlay(Circle().fill(Color.accentColor.opacity(0.18)))
                 .overlay(Circle().stroke(Color.accentColor, lineWidth: 1.5))
                 .overlay(Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Color.accentColor))
         case .pending:
