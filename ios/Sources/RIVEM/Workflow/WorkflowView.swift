@@ -194,46 +194,105 @@ struct WorkflowStepScreen: View {
     }
 }
 
-/// Six segments (done, current, pending) with "Paso n de 6" and the next step; tapping a segment jumps to it.
+/// Stepper of the six steps: numbered circles joined by a line, with a short name under each. The current step is
+/// a large filled circle with its name in bold accent colour; done steps show a check on a light accent circle and
+/// the line up to them is coloured; pending steps are grey outlines (faded when not available yet). Tap to jump.
 private struct StepProgressBar: View {
     let current: WorkflowStep
     let model: WorkflowModel
     let go: (WorkflowStep) -> Void
 
+    private enum StepState { case current, done, pending, locked }
+
     var body: some View {
         let steps: [WorkflowStep] = WorkflowStep.wizard
-        let position: Int = (steps.firstIndex(of: current) ?? 0) + 1
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
-                ForEach(steps) { (s: WorkflowStep) in
-                    Capsule()
-                        .fill(color(s))
-                        .frame(height: 5)
-                        .padding(.vertical, 6)
-                        .contentShape(Rectangle())
-                        .onTapGesture { go(s) }
-                        .accessibilityElement()
-                        .accessibilityLabel(s.title)
-                        .accessibilityAddTraits(.isButton)
-                }
-            }
-            HStack {
-                Text("Paso \(position) de \(steps.count)").font(.caption.bold())
-                Spacer()
-                if position < steps.count {
-                    Text("Siguiente: \(steps[position].shortTitle)").font(.caption).foregroundStyle(.secondary)
-                }
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(steps.enumerated()), id: \.element) { pair in
+                item(pair.element, number: pair.offset + 1, isFirst: pair.offset == 0, isLast: pair.offset == steps.count - 1)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
+        .padding(.top, 2)
         .padding(.bottom, 6)
         .background(.bar)
     }
 
-    private func color(_ s: WorkflowStep) -> Color {
-        if s == current { return Color.primary }
-        if model.isDone(s) { return Color.accentColor }
-        return model.isAvailable(s) ? Color.secondary.opacity(0.45) : Color.secondary.opacity(0.2)
+    private func state(_ s: WorkflowStep) -> StepState {
+        if s == current { return .current }
+        if model.isDone(s) { return .done }
+        return model.isAvailable(s) ? .pending : .locked
+    }
+
+    private func item(_ s: WorkflowStep, number: Int, isFirst: Bool, isLast: Bool) -> some View {
+        let st: StepState = state(s)
+        let size: CGFloat = st == .current ? 30 : 24
+        return VStack(spacing: 4) {
+            ZStack {
+                // Connector halves on each side of the circle (coloured up to the steps already done).
+                HStack(spacing: 0) {
+                    Rectangle().fill(isFirst ? Color.clear : lineColor(leftOf: s)).frame(height: 2)
+                    Rectangle().fill(isLast ? Color.clear : lineColor(rightOf: s)).frame(height: 2)
+                }
+                circle(st, number: number)
+                    .frame(width: size, height: size)
+            }
+            .frame(height: 32)
+            Text(s.stepperTitle)
+                .font(.system(size: 10, weight: st == .current ? .bold : .regular))
+                .foregroundStyle(st == .current ? Color.accentColor : (st == .locked ? Color.secondary.opacity(0.5) : Color.secondary))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { go(s) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Paso \(number), \(s.shortTitle), \(stateText(st))")
+        .accessibilityAddTraits(st == .current ? [.isButton, .isSelected] : .isButton)
+    }
+
+    @ViewBuilder
+    private func circle(_ st: StepState, number: Int) -> some View {
+        switch st {
+        case .current:
+            Circle()
+                .fill(Color.accentColor)
+                .overlay(Text("\(number)").font(.system(size: 14, weight: .bold)).foregroundStyle(.white))
+                .shadow(color: Color.accentColor.opacity(0.5), radius: 4)
+        case .done:
+            Circle()
+                .fill(Color.accentColor.opacity(0.18))
+                .overlay(Circle().stroke(Color.accentColor, lineWidth: 1.5))
+                .overlay(Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Color.accentColor))
+        case .pending:
+            Circle()
+                .fill(Color(.systemBackground))
+                .overlay(Circle().stroke(Color.secondary.opacity(0.6), lineWidth: 1.5))
+                .overlay(Text("\(number)").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary))
+        case .locked:
+            Circle()
+                .fill(Color(.systemBackground))
+                .overlay(Circle().stroke(Color.secondary.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])))
+                .overlay(Text("\(number)").font(.system(size: 11)).foregroundStyle(Color.secondary.opacity(0.5)))
+        }
+    }
+
+    private func lineColor(leftOf s: WorkflowStep) -> Color {
+        guard let i = WorkflowStep.wizard.firstIndex(of: s), i > 0 else { return .clear }
+        return model.isDone(WorkflowStep.wizard[i - 1]) ? Color.accentColor : Color.secondary.opacity(0.25)
+    }
+
+    private func lineColor(rightOf s: WorkflowStep) -> Color {
+        model.isDone(s) ? Color.accentColor : Color.secondary.opacity(0.25)
+    }
+
+    private func stateText(_ st: StepState) -> String {
+        switch st {
+        case .current: return "paso actual"
+        case .done: return "completado"
+        case .pending: return "pendiente"
+        case .locked: return "aún no disponible"
+        }
     }
 }
 

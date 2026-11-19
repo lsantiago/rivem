@@ -35,6 +35,19 @@ enum WorkflowStep: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// Label under the stepper circle (fits a sixth of a phone width).
+    var stepperTitle: String {
+        switch self {
+        case .summary: return "Resumen"
+        case .video: return "Video"
+        case .geometry: return "Georref."
+        case .sections: return "Secciones"
+        case .processing: return "PIV"
+        case .results: return "Resultados"
+        case .export: return "Exportar"
+        }
+    }
+
     /// Steps of the wizard bar, in order (the summary is reached from the step menu).
     static let wizard: [WorkflowStep] = [.video, .geometry, .sections, .processing, .results, .export]
 
