@@ -128,6 +128,25 @@ enum ResultsPipeline {
         return ResultsOutcome(results: results, errors: errors)
     }
 
+    /// Includes or excludes one station of a section (`check` in `xsections.json`, as desktop's results table does).
+    /// Call `compute` afterwards.
+    static func setCheck(_ project: inout RiverProject, section name: String, station: Int, included: Bool) throws {
+        guard var sections = try project.readCrossSections(),
+              let index = sections.sections.firstIndex(where: { $0.name == name }) else {
+            throw PipelineError("No se encontró la sección \(name).")
+        }
+        var s: CrossSection = sections.sections[index]
+        let count: Int = s.json["distance"]?.doubleArray?.count ?? 0
+        var check: [Bool] = (s.json["check"]?.arrayValue ?? []).map { $0.boolValue ?? (($0.doubleValue ?? 1) != 0) }
+        if check.count != count { check = [Bool](repeating: true, count: count) }
+        guard station >= 0, station < count else { throw PipelineError("Estación fuera de rango.") }
+        check[station] = included
+        s.json["check"] = .array(check.map { JSONValue.bool($0) })
+        sections.sections[index] = s
+        try project.writeCrossSections(sections)
+        AppLog.info("Sección \(name): estación \(station + 1) \(included ? "incluida" : "excluida")")
+    }
+
     static func read(_ project: RiverProject) -> [SectionResult] {
         guard let sections = try? project.readCrossSections() else { return [] }
         return sections.sections.compactMap { SectionResult(section: $0) }

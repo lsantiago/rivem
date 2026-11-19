@@ -101,7 +101,7 @@ enum ExampleProject {
 enum ExampleAutotest {
     static let tolerance: Double = 0.15
 
-    static func run(root: URL) -> [String] {
+    static func run(root: URL) async -> [String] {
         var lines: [String] = []
         func report(_ name: String, _ ok: Bool, _ detail: String) {
             let line = "\(ok ? "PASS" : "FAIL") ejemplo \(name): \(detail)"
@@ -132,6 +132,36 @@ enum ExampleAutotest {
             report("caudal", diff <= tolerance,
                    String(format: "Q = %.2f m3/s, RIVeR (notebook 05) %.2f m3/s, diferencia %.1f %% (tolerancia %.0f %%)",
                           q, ExampleProject.referenceQ, diff * 100, tolerance * 100))
+            // Station velocities, for the comparison with desktop's own run of this example.
+            let vs: String = (0..<r.stationCount).map { (i: Int) -> String in Fmt.num(r.value(r.velocity, i), 2) }.joined(separator: " ")
+            report("estaciones", r.stationCount > 0, "Vs (m/s): \(vs)")
+
+            // Station toggle (desktop's check) and report.
+            var toggled: RiverProject = project
+            try ResultsPipeline.setCheck(&toggled, section: r.name, station: 13, included: false)
+            let without: ResultsOutcome = try ResultsPipeline.compute(&toggled, interpolate: true, artificialSeeding: false)
+            let qWithout: Double = without.results.first?.totalQ ?? .nan
+            try ResultsPipeline.setCheck(&toggled, section: r.name, station: 13, included: true)
+            let back: ResultsOutcome = try ResultsPipeline.compute(&toggled, interpolate: true, artificialSeeding: false)
+            let qBack: Double = back.results.first?.totalQ ?? .nan
+            report("estacion desmarcada", qWithout.isFinite && abs(qBack - q) < 1e-9 && abs(qWithout - q) > 1e-6,
+                   String(format: "sin la estación 14 (interpolada): Q = %.2f m3/s; marcada de nuevo: %.2f m3/s", qWithout, qBack))
+            project = toggled
+            let folder: URL = project.folder
+            let pdf: Result<URL, Error> = await MainActor.run { () -> Result<URL, Error> in
+                Result { try ReportPDF.make(project: (try? RiverProject.open(folder)) ?? toggled) }
+            }
+            switch pdf {
+            case let .success(url):
+                let size: Int = ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.intValue ?? 0
+                let docs: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let copy: URL = docs.appendingPathComponent("Ejemplo_Pisco_informe.pdf")
+                try? FileManager.default.removeItem(at: copy)
+                try? FileManager.default.copyItem(at: url, to: copy)
+                report("informe PDF", size > 20_000, "\(url.lastPathComponent), \(size / 1024) KB")
+            case let .failure(e):
+                report("informe PDF", false, "\(e)")
+            }
             let issues = try RiverProject.open(project.folder).compatibilityIssues()
             report("compatibilidad escritorio", issues.isEmpty, issues.isEmpty ? "sin problemas" : issues.map { $0.message }.joined(separator: "; "))
         } catch {

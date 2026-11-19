@@ -9,6 +9,7 @@ struct ExportStepView: View {
     @State private var includeVideo = false
     @State private var zipURL: URL? = nil
     @State private var csvURL: URL? = nil
+    @State private var reportURL: URL? = nil
     @State private var busy = false
     @State private var error: String? = nil
 
@@ -57,6 +58,19 @@ struct ExportStepView: View {
                     }
                 }
             }
+            Section("Informe (PDF)") {
+                Button {
+                    makeReport()
+                } label: {
+                    Label("Generar informe PDF", systemImage: "doc.richtext")
+                }
+                .disabled(!model.hasResults)
+                if let url = reportURL {
+                    ShareLink(item: url) {
+                        Label("Compartir \(url.lastPathComponent)", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
             Section {
                 ErrorBanner(message: error)
             } footer: {
@@ -81,6 +95,16 @@ struct ExportStepView: View {
                 AppLog.error("Exportar ZIP: \(error)")
             }
             busy = false
+        }
+    }
+
+    private func makeReport() {
+        guard let project = model.project else { return }
+        do {
+            reportURL = try ReportPDF.make(project: project)
+            error = nil
+        } catch {
+            self.error = "No se pudo crear el informe: \(error)"
         }
     }
 

@@ -82,6 +82,10 @@ shot 15_example_sections Ejemplo_Pisco sections
 shot 16_example_results Ejemplo_Pisco results 12
 shot 17_example_station Ejemplo_Pisco results 12 -autotest_station 6
 shot 18_example_vectors Ejemplo_Pisco results 12 -autotest_results_vectors 1
+shot 19_dark_results Ejemplo_Pisco results 12 -appearance dark
+shot 20_dark_station Ejemplo_Pisco results 12 -appearance dark -autotest_station 6
+shot 21_dark_list Ejemplo_Pisco list 8 -appearance dark
+cp "$DATA/Documents/Ejemplo_Pisco_informe.pdf" screenshots/ 2>/dev/null || true
 
 # The app must not have rewritten the desktop files just by opening them.
 for f in settings.json xsections.json transformation_matrix.json; do

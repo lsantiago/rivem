@@ -19,6 +19,7 @@ struct ResultsStepView: View {
     @State private var loaded = false
     @State private var mode: CanvasMode = .section
     @State private var selected: StationRef? = nil
+    @State private var reportURL: URL? = nil
 
     enum CanvasMode: String, CaseIterable, Identifiable {
         case section = "Sección"
@@ -133,14 +134,31 @@ struct ResultsStepView: View {
             if results.isEmpty && !busy {
                 Section { Text("Sin resultados de caudal. Pulsa Recalcular.").foregroundStyle(.secondary) }
             }
-            ForEach(results) { r in
-                SectionResultView(result: r, units: units)
+            ForEach(Array(results.enumerated()), id: \.element.id) { pair in
+                SectionResultView(result: pair.element, units: units, enabled: !busy) { (station: Int) in
+                    toggleStation(section: pair.offset, station: station)
+                }
             }
             if results.count > 1 {
                 Section("Todas las secciones") {
                     let qs: [Double] = results.compactMap { $0.totalQ }.filter { $0.isFinite }
                     let mean: Double = qs.isEmpty ? .nan : qs.reduce(0, +) / Double(qs.count)
                     LabeledContent("Caudal medio", value: units.dischargeText(mean))
+                }
+            }
+            if !results.isEmpty {
+                Section("Informe") {
+                    Button {
+                        makeReport()
+                    } label: {
+                        Label("Generar informe PDF", systemImage: "doc.richtext")
+                    }
+                    .disabled(busy)
+                    if let url = reportURL {
+                        ShareLink(item: url) {
+                            Label("Compartir \(url.lastPathComponent)", systemImage: "square.and.arrow.up")
+                        }
+                    }
                 }
             }
         }
@@ -214,15 +232,43 @@ struct ResultsStepView: View {
     }
 
     private func recompute() {
+        run(nil)
+    }
+
+    /// Includes or excludes a station (`check`, same field as desktop's table) and recomputes.
+    private func toggleStation(section: Int, station: Int) {
+        guard section < results.count else { return }
+        let r: SectionResult = results[section]
+        let included: Bool = station < r.check.count ? r.check[station] : true
+        let name: String = r.name
+        run { (p: inout RiverProject) in
+            try ResultsPipeline.setCheck(&p, section: name, station: station, included: !included)
+        }
+    }
+
+    private func makeReport() {
+        guard let project = model.project else { return }
+        do {
+            reportURL = try ReportPDF.make(project: project)
+            error = nil
+        } catch {
+            self.error = "No se pudo crear el informe: \(error)"
+            AppLog.error("Informe PDF: \(error)")
+        }
+    }
+
+    private func run(_ edit: (@Sendable (inout RiverProject) throws -> Void)?) {
         let interp: Bool = interpolate
         let seed: Bool = seeding
         error = nil
         busy = true
+        reportURL = nil
         Task { @MainActor in
             do {
                 guard let project = model.project else { throw PipelineError("El proyecto no está abierto.") }
                 let done: (RiverProject, ResultsOutcome) = try await Task.detached(priority: .userInitiated) { () throws -> (RiverProject, ResultsOutcome) in
                     var p = project
+                    if let edit = edit { try edit(&p) }
                     let o = try ResultsPipeline.compute(&p, interpolate: interp, artificialSeeding: seed)
                     return (p, o)
                 }.value
@@ -263,17 +309,25 @@ private struct UnitPicker: View {
 private struct SectionResultView: View {
     let result: SectionResult
     let units: UnitDisplay
+    let enabled: Bool
+    let onToggle: (Int) -> Void
 
     var body: some View {
         Section(result.name) {
             SectionTotals(result: result, units: units)
+            DischargeBarsChart(result: result, units: units)
+                .frame(height: 150)
             VelocityProfileChart(result: result, units: units)
                 .frame(height: 170)
             DepthProfileChart(result: result, units: units)
                 .frame(height: 140)
-            DisclosureGroup("Tabla de estaciones") {
-                StationTable(result: result, units: units)
-            }
+        }
+        Section {
+            StationTable(result: result, units: units, enabled: enabled, onToggle: onToggle)
+        } header: {
+            Text("Estaciones · \(result.name)")
+        } footer: {
+            Text("Desmarca una estación para sacarla del caudal (con «Interpolar» se rellena desde sus vecinas). Se guarda en el proyecto, igual que en RIVeR escritorio.")
         }
     }
 }
@@ -317,7 +371,7 @@ private struct ChartSample: Identifiable {
     let high: Double
 }
 
-private struct VelocityProfileChart: View {
+struct VelocityProfileChart: View {
     let result: SectionResult
     let units: UnitDisplay
 
@@ -349,7 +403,7 @@ private struct VelocityProfileChart: View {
     }
 }
 
-private struct DepthProfileChart: View {
+struct DepthProfileChart: View {
     let result: SectionResult
     let units: UnitDisplay
 
@@ -379,40 +433,62 @@ private struct DepthProfileChart: View {
 private struct StationTable: View {
     let result: SectionResult
     let units: UnitDisplay
+    let enabled: Bool
+    let onToggle: (Int) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            StationRow(cells: ["#", "dist", "prof", "V", "Q"], header: true)
-            ForEach(0..<result.stationCount, id: \.self) { i in
-                StationRow(cells: cells(i), header: false)
+        VStack(alignment: .leading, spacing: 8) {
+            StationRow(check: nil, cells: ["#", "x", "d", "A", "Vs", "Q"], header: true, onToggle: {})
+            ForEach(0..<result.stationCount, id: \.self) { (i: Int) in
+                StationRow(check: i < result.check.count ? result.check[i] : true, cells: cells(i), header: false) {
+                    onToggle(i)
+                }
+                .disabled(!enabled)
             }
-            Text("dist y prof en \(units.lengthUnit), V en \(units.velocityUnit), Q en \(units.dischargeUnit).")
+            Text("x, d en \(units.lengthUnit) · A en \(units.areaUnit) · Vs en \(units.velocityUnit) · Q en \(units.dischargeUnit)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
     }
 
     private func cells(_ i: Int) -> [String] {
-        let d: String = result.value(result.distance, i).map { Fmt.num(units.length($0), 2) } ?? "—"
-        let h: String = result.value(result.depth, i).map { Fmt.num(units.length($0), 2) } ?? "—"
-        let v: String = result.value(result.velocity, i).map { Fmt.num(units.velocity($0), 3) } ?? "—"
-        let q: String = result.value(result.q, i).map { Fmt.num(units.discharge($0), 3) } ?? "—"
-        let unchecked: Bool = i < result.check.count && !result.check[i]
-        return ["\(i + 1)" + (unchecked ? "*" : ""), d, h, v, q]
+        let x: String = result.value(result.distance, i).map { Fmt.num(units.length($0), 2) } ?? "—"
+        let d: String = result.value(result.depth, i).map { Fmt.num(units.length($0), 2) } ?? "—"
+        let a: String = result.value(result.area, i).map { Fmt.num(units.area($0), 2) } ?? "—"
+        let v: String = result.value(result.velocity, i).map { Fmt.num(units.velocity($0), 2) } ?? "—"
+        let q: String = result.value(result.q, i).map { Fmt.num(units.discharge($0), 2) } ?? "—"
+        return ["\(i + 1)", x, d, a, v, q]
     }
 }
 
 private struct StationRow: View {
+    /// nil for the header row.
+    let check: Bool?
     let cells: [String]
     let header: Bool
+    let onToggle: () -> Void
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(0..<cells.count, id: \.self) { k in
+            Group {
+                if let checked = check {
+                    Button(action: onToggle) {
+                        Image(systemName: checked ? "checkmark.square.fill" : "square")
+                            .foregroundStyle(checked ? Color.accentColor : Color.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(checked ? "Estación incluida" : "Estación excluida")
+                } else {
+                    Image(systemName: "square").hidden()
+                }
+            }
+            .frame(width: 24, alignment: .leading)
+            ForEach(0..<cells.count, id: \.self) { (k: Int) in
                 Text(cells[k])
                     .frame(maxWidth: .infinity, alignment: k == 0 ? .leading : .trailing)
             }
         }
         .font(header ? Font.caption.bold() : Font.caption.monospacedDigit())
+        .foregroundStyle(check == false ? Color.secondary : Color.primary)
     }
 }

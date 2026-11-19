@@ -5,6 +5,7 @@ import RiverCore
 @main
 struct RIVEMApp: App {
     @State private var workspace = Workspace()
+    @AppStorage(AppAppearance.storageKey) private var appearance: String = AppAppearance.system.rawValue
 
     init() {
         AppLog.logLaunch()
@@ -14,7 +15,29 @@ struct RIVEMApp: App {
         WindowGroup {
             HomeView()
                 .environment(workspace)
+                .preferredColorScheme(AppAppearance(rawValue: appearance)?.colorScheme)
                 .task { await Autotest.runIfRequested(workspace: workspace) }
+        }
+    }
+}
+
+/// System / light / dark appearance (`-appearance dark` at launch also works, through UserDefaults).
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+    static let storageKey = "appearance"
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .system: return "Sistema"
+        case .light: return "Claro"
+        case .dark: return "Oscuro"
+        }
+    }
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
         }
     }
 }
@@ -24,6 +47,7 @@ struct HomeView: View {
     @State private var importing = false
     @State private var creating = false
     @State private var installingExample = false
+    @AppStorage(AppAppearance.storageKey) private var appearance: String = AppAppearance.system.rawValue
     @State private var pendingDelete: ProjectSummary?
     @State private var checks: [SelfCheck.Result] = []
     @State private var path: [ProjectSummary] = []
@@ -70,6 +94,14 @@ struct HomeView: View {
                     } label: {
                         Label("Diagnóstico y registro", systemImage: "stethoscope")
                     }
+                }
+                Section("Apariencia") {
+                    Picker("Tema", selection: $appearance) {
+                        ForEach(AppAppearance.allCases) { (a: AppAppearance) in
+                            Text(a.label).tag(a.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                 }
                 Section("Núcleo") {
                     LabeledContent("RiverCore", value: RiverCore.version)

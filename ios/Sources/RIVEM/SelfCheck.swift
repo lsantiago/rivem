@@ -99,8 +99,8 @@ enum Autotest {
         }
         if isExampleRequested {
             let root: URL = workspace.root
-            let exampleLines: [String] = await Task.detached(priority: .userInitiated) { () -> [String] in
-                ExampleAutotest.run(root: root)
+            let exampleLines: [String] = await Task.detached(priority: .userInitiated) { () async -> [String] in
+                await ExampleAutotest.run(root: root)
             }.value
             lines.append(contentsOf: exampleLines)
         }
