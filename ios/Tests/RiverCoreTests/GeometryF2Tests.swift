@@ -130,6 +130,24 @@ final class ObliqueTransformTests: XCTestCase {
         for (a, b) in zip(sol.roi, expectedROI) { XCTAssertEqual(a, b, accuracy: 1e-12) }
     }
 
+    /// PLAN #18: numbering the quadrilateral the other way round (1→2 along a bank) must not mirror the world, or the
+    /// flow direction flips and Q comes out negative. The solution equals the truth up to a rigid motion.
+    func testReversedNumberingDoesNotMirrorTheWorld() throws {
+        let truth = Matrix3(rows: [[0.0103, 0.0040, -5.80], [-0.0031, -0.0230, 21.78], [5.8e-5, 1.45e-3, -0.348]])
+        let inv = try truth.inverse()
+        for q in [quad, [quad[0], quad[3], quad[2], quad[1]]] {
+            let pixels = q.map { inv.apply($0) }
+            let sol = try ObliqueTransform.solve(pixels: pixels, distances: distances(q))
+            for r in sol.distanceResiduals { XCTAssertEqual(r, 0, accuracy: 1e-6) }
+            XCTAssertGreaterThan(ObliqueTransform.signedArea(sol.world) * ObliqueTransform.signedArea(q), 0,
+                                 "mundo espejado")
+            // Rigid motion: distances between arbitrary mapped pixels are preserved.
+            let a = Point2(400, 800), b = Point2(1500, 600)
+            XCTAssertEqual(sol.matrix.apply(a).distance(to: sol.matrix.apply(b)),
+                           truth.apply(a).distance(to: truth.apply(b)), accuracy: 1e-6)
+        }
+    }
+
     func testAnchorsRotateAndTranslateTheSolution() throws {
         let pixels = [Point2(50, 930), Point2(1800, 690), Point2(1400, 420), Point2(450, 480)]
         let d = distances(quad)

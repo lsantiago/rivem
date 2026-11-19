@@ -66,6 +66,35 @@ public enum ObliqueTransform {
         return (Point2(v[0], v[1]), Point2(v[2], v[3]))
     }
 
+    /// `trilaterate`, then the mirror image across the 1→2 baseline when needed so the world quadrilateral has the
+    /// orientation of the view (**fix over desktop**, docs/PLAN.md #18). Six distances fix the quadrilateral only up
+    /// to a reflection; desktop always takes P3 and P4 north of the baseline, so numbering the points the other way
+    /// round (e.g. 1→2 along a bank instead of across) gives a mirrored world: the flow direction flips and the
+    /// discharge comes out negative. A camera never sees the water plane mirrored: with the image's y axis down and
+    /// North up, the signed areas of the pixel and world quadrilaterals have opposite signs. Inputs numbered like the
+    /// desktop GUI already satisfy this and are unchanged.
+    public static func orientedTrilateration(_ d: ObliqueDistances, pixels: [Point2]) -> (p3: Point2, p4: Point2) {
+        let (p3, p4) = trilaterate(d)
+        let world: [Point2] = [Point2(0, 0), Point2(d.d12, 0), p3, p4]
+        let pixelArea: Double = signedArea(pixels)
+        let worldArea: Double = signedArea(world)
+        if pixelArea * worldArea > 0 {
+            return (Point2(p3.x, -p3.y), Point2(p4.x, -p4.y))
+        }
+        return (p3, p4)
+    }
+
+    /// Shoelace signed area of a polygon (positive counter-clockwise in a y-up frame).
+    static func signedArea(_ points: [Point2]) -> Double {
+        var sum = 0.0
+        for i in points.indices {
+            let a: Point2 = points[i]
+            let b: Point2 = points[(i + 1) % points.count]
+            sum += a.x * b.y - b.x * a.y
+        }
+        return sum / 2
+    }
+
     /// Full calibration.
     /// - Parameters:
     ///   - pixels: pixel positions of points 1…4 (frame coordinates, y down).
@@ -99,13 +128,13 @@ public enum ObliqueTransform {
             }
             var canonical = distances
             if !enforceD12 { canonical.d12 = anchorD12 }
-            let (c3, c4) = trilaterate(canonical)
+            let (c3, c4) = orientedTrilateration(canonical, pixels: pixels)
             let theta: Double = atan2(a2.y - a1.y, a2.x - a1.x)
             let c = cos(theta), s = sin(theta)
             let rotate: (Point2) -> Point2 = { p in Point2(c * p.x - s * p.y + a1.x, s * p.x + c * p.y + a1.y) }
             world = [a1, a2, rotate(c3), rotate(c4)]
         } else {
-            let (p3, p4) = trilaterate(distances)
+            let (p3, p4) = orientedTrilateration(distances, pixels: pixels)
             world = [Point2(0, 0), Point2(distances.d12, 0), p3, p4]
         }
 

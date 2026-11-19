@@ -50,6 +50,7 @@ Hallazgos de la revisión de RIVeR 3.8.3 (commit `ea65612`). Estado en el port:
 | 15 | Relleno superior de la imagen UAV usa el relleno horizontal | `coordinate_transform.py` | **Corregido** (F2); sin efecto con el relleno 0 de la GUI |
 | 16 | Altura de ROI recomendada usa el `rw_length` de la última sección, no el mínimo | `define_roi_masks.py` | **Corregido** (F2); igual con una sola sección |
 | 17 | Solución de cámara 3D: DLT sin normalizar sobre UTM (mal condicionada) | `coordinate_transform.py:316` | Mismo objetivo, resuelto con SVD de Jacobi (más precisa); tolerancias de referencia 0,1 px / 5 cm |
+| 18 | Oblicua: 6 distancias fijan el cuadrilátero salvo un espejo; escritorio siempre pone P3 y P4 al norte de 1→2, así que numerar los puntos en el otro sentido espeja el mundo (flujo invertido, caudal negativo) | `coordinate_transform.py` (`optimize_coordinates`) | **Corregido** (F5): se elige la orientación de la vista (áreas con signo opuestas en imagen y terreno), test `testReversedNumberingDoesNotMirrorTheWorld`; la numeración de la GUI de escritorio no cambia |
 
 Cuando una corrección cambia resultados respecto a escritorio, la referencia de `ci/testdata` lo anota.
 
