@@ -134,6 +134,10 @@ if ! grep -q "^PASS ejemplo caudal" screenshots/autotest_summary.txt 2>/dev/null
   echo "The pisco example (install + PIV + discharge) did not pass"
   STATUS=1
 fi
+if ! grep -q "^PASS ejemplo calidad" screenshots/autotest_summary.txt 2>/dev/null; then
+  echo "The pisco example quality / uncertainty check did not pass"
+  STATUS=1
+fi
 if grep -q "^FAIL" screenshots/autotest_summary.txt 2>/dev/null; then
   echo "Some checks failed:"
   grep "^FAIL" screenshots/autotest_summary.txt

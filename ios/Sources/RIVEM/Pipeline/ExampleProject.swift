@@ -136,6 +136,27 @@ enum ExampleAutotest {
             let vs: String = (0..<r.stationCount).map { (i: Int) -> String in Fmt.num(r.value(r.velocity, i), 2) }.joined(separator: " ")
             report("estaciones", r.stationCount > 0, "Vs (m/s): \(vs)")
 
+            // Traffic light and Q ± U (RIVEM addition): the Monte Carlo total must be the section's total_Q.
+            if let a = QualityPipeline.assess(project, results: outcome.results).first {
+                let u: DischargeUncertainty = a.uncertainty
+                let checks: String = a.quality.checks.map { (c: QualityCheck) -> String in
+                    "\(c.criterion.rawValue) \(Fmt.num(c.value, 3)) \(QualityPipeline.levelText(c.level))"
+                }.joined(separator: ", ")
+                let shares: String = UncertaintySource.allCases.map { (s: UncertaintySource) -> String in
+                    "\(s.rawValue) \(Fmt.percent(u.shares[s], 0))"
+                }.joined(separator: ", ")
+                let doubtful: String = a.quality.doubtful.map { (d: DoubtfulStation) -> String in
+                    "\(d.index + 1) (\(d.reasons.map { $0.rawValue }.joined(separator: "+")))"
+                }.joined(separator: ", ")
+                let sameQ: Bool = abs(u.discharge - q) <= 0.01 * abs(q)
+                report("calidad", sameQ && u.expanded.isFinite && u.relative > 0 && u.relative < 0.5,
+                       String(format: "Q = %.2f ± %.2f m3/s (95 %%, %.1f %%), suma de estaciones %.4f vs total_Q %.4f; ",
+                              q, u.expanded, u.relative * 100, u.discharge, q)
+                       + "\(QualityPipeline.levelText(a.quality.overall)); \(checks); fuentes: \(shares); dudosas: [\(doubtful)]")
+            } else {
+                report("calidad", false, "sin evaluación")
+            }
+
             // Station toggle (desktop's check) and report.
             var toggled: RiverProject = project
             try ResultsPipeline.setCheck(&toggled, section: r.name, station: 13, included: false)

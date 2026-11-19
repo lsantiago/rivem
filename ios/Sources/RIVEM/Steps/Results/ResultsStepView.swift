@@ -22,6 +22,10 @@ struct ResultsStepView: View {
     @State private var reportURL: URL? = nil
     /// Inverse of the pixel → world matrix, to project desktop's chevron glyph (built in metres).
     @State private var worldToPixel: Matrix3? = nil
+    /// Traffic light and Q ± U of every section (RIVEM addition).
+    @State private var assessments: [SectionAssessment] = []
+    @State private var assumptions = UncertaintyAssumptions()
+    @State private var pairCount: Int? = nil
 
     enum CanvasMode: String, CaseIterable, Identifiable {
         case section = "Sección"
@@ -115,12 +119,21 @@ struct ResultsStepView: View {
             if !results.isEmpty {
                 Section {
                     ForEach(results) { r in
-                        DischargeHero(result: r, units: units, showName: results.count > 1)
+                        DischargeHero(result: r, units: units, showName: results.count > 1,
+                                      uncertainty: assessment(r.name)?.uncertainty, quality: assessment(r.name)?.quality.overall)
                     }
                     Text("Toca una estación en la imagen para ver su detalle.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            ForEach(assessments) { (a: SectionAssessment) in
+                QualitySection(assessment: a, units: units, showName: assessments.count > 1) { (station: Int) in
+                    select(sectionNamed: a.name, station: station)
+                }
+            }
+            if !results.isEmpty {
+                UncertaintyAssumptionsSection(assumptions: $assumptions, units: units, onChange: saveAssumptions)
             }
             Section("Opciones de cálculo") {
                 Toggle("Interpolar estaciones sin dato", isOn: $interpolate)
@@ -138,7 +151,8 @@ struct ResultsStepView: View {
                 Section { Text("Sin resultados de caudal. Pulsa Recalcular.").foregroundStyle(.secondary) }
             }
             ForEach(Array(results.enumerated()), id: \.element.id) { pair in
-                SectionResultView(result: pair.element, units: units, enabled: !busy) { (station: Int) in
+                SectionResultView(result: pair.element, units: units, enabled: !busy,
+                                  doubtful: doubtfulStations(pair.element.name)) { (station: Int) in
                     toggleStation(section: pair.offset, station: station)
                 }
             }
@@ -172,6 +186,8 @@ struct ResultsStepView: View {
         loaded = true
         results = ResultsPipeline.read(project)
         worldToPixel = (try? project.readMatrix()).flatMap { try? $0.inverse() }
+        assumptions = UncertaintyAssumptions(settings: project.settings)
+        reassess()
         if let first = results.first {
             interpolate = first.interpolated
             seeding = first.artificialSeeding
@@ -182,14 +198,15 @@ struct ResultsStepView: View {
         if Autotest.resultsVectors { mode = .vectors }
         let width: Double = Double(model.frameSize.width)
         Task { @MainActor in
-            let computed: QuiverField? = await Task.detached(priority: .utility) { () -> QuiverField? in
+            let computed: (QuiverField, Int)? = await Task.detached(priority: .utility) { () -> (QuiverField, Int)? in
                 guard let piv = try? project.readPIVResults() else { return nil }
                 let matrix: Matrix3? = try? project.readMatrix()
-                return Self.quiver(piv, imageWidth: width, matrix: matrix, frameInterval: project.settings.frameInterval)
+                return (Self.quiver(piv, imageWidth: width, matrix: matrix, frameInterval: project.settings.frameInterval), piv.pairCount)
             }.value
             if let c = computed {
-                field = c.vectors
-                fieldRange = c.range
+                field = c.0.vectors
+                fieldRange = c.0.range
+                pairCount = c.1
             }
         }
     }
@@ -206,6 +223,55 @@ struct ResultsStepView: View {
 
     private func recompute() {
         run(nil)
+    }
+
+    private func assessment(_ name: String) -> SectionAssessment? {
+        assessments.first { $0.name == name }
+    }
+
+    private func doubtfulStations(_ name: String) -> Set<Int> {
+        Set((assessment(name)?.quality.doubtful ?? []).map { $0.index })
+    }
+
+    /// Recomputes the traffic light and Q ± U (Monte Carlo, a few ms) from the results on screen.
+    private func reassess() {
+        guard let project = model.project, !results.isEmpty else {
+            assessments = []
+            return
+        }
+        let current: [SectionResult] = results
+        let pairs: Int? = pairCount
+        Task { @MainActor in
+            let a: [SectionAssessment] = await Task.detached(priority: .utility) { () -> [SectionAssessment] in
+                QualityPipeline.assess(project, results: current, pairCount: pairs)
+            }.value
+            assessments = a
+            for s in a {
+                let doubtful: [Int] = s.quality.doubtful.map { $0.index + 1 }
+                AppLog.info("Calidad \(s.name): \(QualityPipeline.levelText(s.quality.overall)), Q = \(Fmt.num(s.uncertainty.discharge, 3)) "
+                    + "± \(Fmt.num(s.uncertainty.expanded, 3)) m3/s (95 %), dudosas \(doubtful)")
+            }
+        }
+    }
+
+    private func saveAssumptions() {
+        guard let settings = model.settings, UncertaintyAssumptions(settings: settings) != assumptions else { return }
+        let a: UncertaintyAssumptions = assumptions
+        do {
+            try model.update { (p: inout RiverProject) in
+                a.write(to: &p.settings)
+                try p.save()
+            }
+        } catch {
+            self.error = "No se pudieron guardar los supuestos: \(error)"
+        }
+        reassess()
+    }
+
+    private func select(sectionNamed name: String, station: Int) {
+        guard let si = results.firstIndex(where: { $0.name == name }) else { return }
+        mode = .section
+        withAnimation(.easeInOut(duration: 0.2)) { selected = StationRef(section: si, station: station) }
     }
 
     /// Includes or excludes a station (`check`, same field as desktop's table) and recomputes.
@@ -247,6 +313,7 @@ struct ResultsStepView: View {
                 }.value
                 model.replace(done.0)
                 results = done.1.results
+                reassess()
                 if !done.1.errors.isEmpty { error = done.1.errors.joined(separator: "\n") }
             } catch {
                 self.error = "\(error)"
@@ -283,6 +350,7 @@ private struct SectionResultView: View {
     let result: SectionResult
     let units: UnitDisplay
     let enabled: Bool
+    let doubtful: Set<Int>
     let onToggle: (Int) -> Void
 
     var body: some View {
@@ -296,11 +364,11 @@ private struct SectionResultView: View {
                 .frame(height: 140)
         }
         Section {
-            StationTable(result: result, units: units, enabled: enabled, onToggle: onToggle)
+            StationTable(result: result, units: units, enabled: enabled, doubtful: doubtful, onToggle: onToggle)
         } header: {
             Text("Estaciones · \(result.name)")
         } footer: {
-            Text("Desmarca una estación para sacarla del caudal (con «Interpolar» se rellena desde sus vecinas). Se guarda en el proyecto, igual que en RIVeR escritorio.")
+            Text("Desmarca una estación para sacarla del caudal (con «Interpolar» se rellena desde sus vecinas). Se guarda en el proyecto, igual que en RIVeR escritorio. ⚠︎ = estación dudosa (ver Calidad del aforo).")
         }
     }
 }
@@ -407,13 +475,15 @@ private struct StationTable: View {
     let result: SectionResult
     let units: UnitDisplay
     let enabled: Bool
+    let doubtful: Set<Int>
     let onToggle: (Int) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            StationRow(check: nil, cells: ["#", "x", "d", "A", "Vs", "Q"], header: true, onToggle: {})
+            StationRow(check: nil, cells: ["#", "x", "d", "A", "Vs", "Q"], header: true, flagged: false, onToggle: {})
             ForEach(0..<result.stationCount, id: \.self) { (i: Int) in
-                StationRow(check: i < result.check.count ? result.check[i] : true, cells: cells(i), header: false) {
+                StationRow(check: i < result.check.count ? result.check[i] : true, cells: cells(i), header: false,
+                           flagged: doubtful.contains(i)) {
                     onToggle(i)
                 }
                 .disabled(!enabled)
@@ -439,6 +509,8 @@ private struct StationRow: View {
     let check: Bool?
     let cells: [String]
     let header: Bool
+    /// Doubtful station: number in orange with a warning sign.
+    let flagged: Bool
     let onToggle: () -> Void
 
     var body: some View {
@@ -457,7 +529,8 @@ private struct StationRow: View {
             }
             .frame(width: 24, alignment: .leading)
             ForEach(0..<cells.count, id: \.self) { (k: Int) in
-                Text(cells[k])
+                Text(k == 0 && flagged ? cells[k] + "⚠︎" : cells[k])
+                    .foregroundStyle(k == 0 && flagged ? Color.orange : (check == false ? Color.secondary : Color.primary))
                     .frame(maxWidth: .infinity, alignment: k == 0 ? .leading : .trailing)
             }
         }

@@ -9,6 +9,8 @@ struct SectionResult: Identifiable {
     let distance: [Double]
     /// Surface velocity used for the discharge (filled / seeded profile when those options are on), m/s.
     let velocity: [Double]
+    /// Measured surface velocity (`streamwise_velocity_magnitude`, NaN where none), before filling.
+    let rawVelocity: [Double]
     let minusStd: [Double]
     let plusStd: [Double]
     let depth: [Double]
@@ -60,6 +62,7 @@ struct SectionResult: Identifiable {
             if filled.count == distance.count { v = filled }
         }
         velocity = v
+        rawVelocity = arr("streamwise_velocity_magnitude")
         minusStd = arr("minus_std")
         plusStd = arr("plus_std")
         depth = arr("depth")

@@ -84,7 +84,9 @@ enum ReportPDF {
             frame = ImageCoding.thumbnail(contentsOf: first, maxPixel: 1400)
             if let s = ImageCoding.pixelSize(of: first) { frameSize = CGSize(width: s.width, height: s.height) }
         }
-        let page = ReportPage(project: project, results: results, units: units, frame: frame, frameSize: frameSize)
+        let assessments: [SectionAssessment] = QualityPipeline.assess(project, results: results)
+        let page = ReportPage(project: project, results: results, assessments: assessments, units: units, frame: frame,
+                              frameSize: frameSize)
             .frame(width: 595)
             .environment(\.colorScheme, .light)
         let renderer = ImageRenderer(content: page)
@@ -116,6 +118,7 @@ enum ReportPDF {
 private struct ReportPage: View {
     let project: RiverProject
     let results: [SectionResult]
+    let assessments: [SectionAssessment]
     let units: UnitDisplay
     let frame: CGImage?
     let frameSize: CGSize
@@ -184,6 +187,9 @@ private struct ReportPage: View {
                 Spacer()
                 Text("\(Fmt.percent(r.measuredQ, 1)) medido · α \(Fmt.num(r.alpha, 2))").font(.system(size: 9)).foregroundStyle(.secondary)
             }
+            if let a = assessments.first(where: { $0.name == r.name }) {
+                qualityBlock(a)
+            }
             if let image = frame, frameSize.width > 0 {
                 ReportFrameView(image: image, imageSize: frameSize, results: [r],
                                 worldToPixel: (try? project.readMatrix()).flatMap { try? $0.inverse() })
@@ -200,6 +206,38 @@ private struct ReportPage: View {
                 .font(.system(size: 8))
             stationTable(r)
         }
+    }
+
+    /// Traffic light, Q ± U (95 %) and every criterion, like the Results screen.
+    private func qualityBlock(_ a: SectionAssessment) -> some View {
+        let u: DischargeUncertainty = a.uncertainty
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                TrafficLight(level: a.quality.overall, size: 8)
+                Text("Calidad: \(QualityPipeline.levelText(a.quality.overall))").font(.system(size: 10, weight: .bold))
+                Text("Q = \(units.dischargeText(u.discharge, 2)) ± \(units.dischargeText(u.expanded, 2)) (95 %, \(Fmt.percent(u.relative, 1))), "
+                     + "intervalo \(units.dischargeText(u.lower, 2)) – \(units.dischargeText(u.upper, 2))")
+                    .font(.system(size: 9))
+            }
+            ForEach(a.quality.checks, id: \.criterion) { (c: QualityCheck) in
+                HStack(spacing: 5) {
+                    Circle().fill(c.level.color).frame(width: 6, height: 6)
+                    Text(QualityPipeline.title(c.criterion))
+                    Spacer()
+                    Text(QualityPipeline.valueText(c)).monospacedDigit()
+                }
+                .font(.system(size: 8))
+            }
+            if !a.quality.doubtful.isEmpty {
+                Text("Estaciones dudosas: " + a.quality.doubtful.map { (d: DoubtfulStation) -> String in
+                    "\(d.index + 1) (\(d.reasons.map(QualityPipeline.reasonText).joined(separator: ", ")))"
+                }.joined(separator: "; "))
+                .font(.system(size: 8))
+                .foregroundStyle(Color.orange)
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.4), lineWidth: 0.5))
     }
 
     private func stationTable(_ r: SectionResult) -> some View {

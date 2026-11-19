@@ -321,6 +321,8 @@ struct DischargeHero: View {
     let result: SectionResult
     let units: UnitDisplay
     let showName: Bool
+    var uncertainty: DischargeUncertainty? = nil
+    var quality: QualityLevel? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -339,6 +341,15 @@ struct DischargeHero: View {
                 }
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
+            }
+            if let u = uncertainty, u.expanded.isFinite {
+                HStack(spacing: 6) {
+                    if let q = quality {
+                        Image(systemName: q.symbol).foregroundStyle(q.color)
+                    }
+                    Text("± \(units.dischargeText(u.expanded, 2)) (95 %, \(Fmt.percent(u.relative, 0)))")
+                        .font(.subheadline.monospacedDigit())
+                }
             }
             if let std = result.totalQStd, std.isFinite {
                 Text("± \(units.dischargeText(std, 2)) (desvío entre pares)")
