@@ -21,6 +21,11 @@ struct SectionResult: Identifiable {
     let check: [Bool]
     let stationX: [Double]
     let stationY: [Double]
+    /// Real-world station coordinates and streamwise direction (m), for desktop's chevron glyph.
+    let east: [Double]
+    let north: [Double]
+    let streamEast: [Double]
+    let streamNorth: [Double]
     let streamX: [Double]
     let streamY: [Double]
     let totalQ: Double?
@@ -65,6 +70,10 @@ struct SectionResult: Identifiable {
         check = (j["check"]?.arrayValue ?? []).map { $0.boolValue ?? (($0.doubleValue ?? 1) != 0) }
         stationX = arr("x")
         stationY = arr("y")
+        east = arr("east")
+        north = arr("north")
+        streamEast = arr("streamwise_east")
+        streamNorth = arr("streamwise_north")
         streamX = arr("streamwise_x")
         streamY = arr("streamwise_y")
         totalQ = j["total_Q"]?.doubleValue

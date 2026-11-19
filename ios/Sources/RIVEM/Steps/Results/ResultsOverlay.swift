@@ -1,13 +1,14 @@
 import RiverCore
 import SwiftUI
 
-/// Velocity colour scale of the Results screen (cyan → green → yellow → red, like desktop's), for t in 0…1.
+/// Velocity colour scale of the Results screen, desktop's `createColorMap` (`commons/vectors.ts`): light blue →
+/// green → orange-yellow → red-orange at equal spacing, for t in 0…1.
 enum VelocityColors {
     private static let stops: [(t: Double, r: Double, g: Double, b: Double)] = [
-        (0.00, 0.33, 0.80, 0.95),
-        (0.35, 0.40, 0.82, 0.45),
-        (0.70, 0.98, 0.78, 0.28),
-        (1.00, 0.93, 0.33, 0.30),
+        (0.0, 108.0 / 255, 212.0 / 255, 255.0 / 255),
+        (1.0 / 3, 98.0 / 255, 198.0 / 255, 85.0 / 255),
+        (2.0 / 3, 245.0 / 255, 191.0 / 255, 97.0 / 255),
+        (1.0, 237.0 / 255, 107.0 / 255, 87.0 / 255),
     ]
 
     static func color(_ t: Double) -> Color {
@@ -37,7 +38,7 @@ struct StationRef: Equatable {
 /// Unchecked stations are grey. The section line and its banks (L red, R green) are drawn underneath.
 enum ChevronLayer {
     static func draw(_ context: inout GraphicsContext, layout: CanvasLayout, results: [SectionResult],
-                     range: ClosedRange<Double>, time: Double, selected: StationRef?) {
+                     worldToPixel: Matrix3?, range: ClosedRange<Double>, time: Double, selected: StationRef?) {
         for (si, r) in results.enumerated() {
             let n: Int = min(r.stationX.count, r.stationY.count)
             guard n >= 2 else { continue }
@@ -51,6 +52,11 @@ enum ChevronLayer {
             bank(&context, at: a, label: "I", color: .red)
             bank(&context, at: b, label: "D", color: .green)
 
+            if let inverse = worldToPixel, r.east.count >= n, r.north.count >= n, r.distance.count >= n {
+                drawGlyphs(&context, layout: layout, result: r, section: si, inverse: inverse, range: range, time: time,
+                           selected: selected)
+                continue
+            }
             let span: Double = max(range.upperBound - range.lowerBound, 1e-9)
             for i in 0..<min(n, r.streamX.count, r.streamY.count) {
                 guard contributes(r, i), let v = r.value(r.velocity, i), r.stationX[i].isFinite, r.stationY[i].isFinite,
@@ -68,6 +74,88 @@ enum ChevronLayer {
                     marker(&context, at: p, number: i + 1)
                 }
             }
+        }
+    }
+
+    /// Desktop's glyph (`drawVectors.ts` + `chevronGlyph.ts`): built in real-world metres at the station and projected
+    /// through the homography, so perspective is exact. Arrow length ∝ |v| (2 station spacings at the top of the scale),
+    /// glyph width half a spacing, up to 6 filled chevrons at a constant pitch, travelling along the streamwise
+    /// direction with one 1.7 s period for every station (so apparent speed ∝ v) and a per-station phase offset,
+    /// fading in and out with sin(πf), with a soft shadow. Static (time 0, Reduce Motion, report): evenly laid out.
+    private static func drawGlyphs(_ context: inout GraphicsContext, layout: CanvasLayout, result r: SectionResult,
+                                   section si: Int, inverse: Matrix3, range: ClosedRange<Double>, time: Double,
+                                   selected: StationRef?) {
+        let n: Int = min(r.east.count, r.north.count, r.distance.count)
+        guard n >= 2 else { return }
+        let spacing: Double = abs(r.distance[n - 1] - r.distance[0]) / Double(n - 1)
+        let maxLength: Double = spacing * 2
+        let width: Double = spacing * 0.5
+        let thickness: Double = width * 0.16 * 3.3
+        let halfWing: Double = width * 0.7
+        let back: Double = width * 0.5
+        let top: Double = max(abs(range.lowerBound), abs(range.upperBound), 1e-9)
+        let span: Double = max(range.upperBound - range.lowerBound, 1e-9)
+        let animated: Bool = time != 0
+        let phase: Double = animated ? (time / 1.7).truncatingRemainder(dividingBy: 1) : 0
+        for i in 0..<n {
+            guard contributes(r, i), let v = r.value(r.velocity, i), r.east[i].isFinite, r.north[i].isFinite else { continue }
+            let checked: Bool = i >= r.check.count || r.check[i]
+            if !checked && !r.interpolated { continue }
+            let length: Double = abs(v) / top * maxLength
+            guard length > 0 else { continue }
+            // Across: the section tangent. Along: RIVeR's streamwise vector (perpendicular as fallback), reversed for v < 0.
+            let a: Int = max(0, i - 1)
+            let b: Int = min(n - 1, i + 1)
+            var tx: Double = r.east[b] - r.east[a]
+            var ty: Double = r.north[b] - r.north[a]
+            let tl: Double = hypot(tx, ty)
+            if tl > 0 { tx /= tl; ty /= tl } else { tx = 1; ty = 0 }
+            var dx: Double = 0
+            var dy: Double = 0
+            if i < r.streamEast.count, i < r.streamNorth.count, r.streamEast[i].isFinite, r.streamNorth[i].isFinite {
+                let l: Double = hypot(r.streamEast[i], r.streamNorth[i])
+                if l > 0 { dx = r.streamEast[i] / l; dy = r.streamNorth[i] / l }
+            }
+            if dx == 0 && dy == 0 { dx = -ty; dy = tx }
+            if v < 0 { dx = -dx; dy = -dy }
+            let east0: Double = r.east[i]
+            let north0: Double = r.north[i]
+            func place(_ along: Double, _ across: Double) -> CGPoint {
+                layout.view(inverse.apply(Point2(east0 + dx * along + tx * across, north0 + dy * along + ty * across)))
+            }
+            let base: CGPoint = place(0, 0)
+            let tip: CGPoint = place(length, 0)
+            guard hypot(tip.x - base.x, tip.y - base.y) >= 2 else { continue }
+            let color: Color = checked ? VelocityColors.color((v - range.lowerBound) / span) : .gray
+            let count: Int = max(1, min(6, Int((length / (width * 0.8)).rounded())))
+            let offset: Double = (Double(i) * 0.618).truncatingRemainder(dividingBy: 1)
+            let isSelected: Bool = selected == StationRef(section: si, station: i)
+            context.drawLayer { (layer: inout GraphicsContext) in
+                layer.addFilter(.shadow(color: .black.opacity(0.45), radius: 1.4, x: 0, y: 1))
+                for k in 0..<count {
+                    let f: Double = animated
+                        ? (phase + offset + Double(k) / Double(count)).truncatingRemainder(dividingBy: 1)
+                        : (Double(k) + 0.5) / Double(count)
+                    let apex: Double = max(0, length * f)
+                    let wing: Double = max(0, apex - back)
+                    let innerApex: Double = max(0, apex - thickness)
+                    let innerWing: Double = max(0, wing - thickness)
+                    var path = Path()
+                    path.move(to: place(wing, halfWing))
+                    path.addLine(to: place(apex, 0))
+                    path.addLine(to: place(wing, -halfWing))
+                    path.addLine(to: place(innerWing, -halfWing))
+                    path.addLine(to: place(innerApex, 0))
+                    path.addLine(to: place(innerWing, halfWing))
+                    path.closeSubpath()
+                    let fade: Double = sin(Double.pi * f)
+                    let fillOpacity: Double = isSelected ? 1 : (animated ? fade * 0.95 : 0.85)
+                    let strokeOpacity: Double = isSelected ? 1 : (animated ? fade * 0.5 : 0.5)
+                    layer.fill(path, with: .color(color.opacity(fillOpacity)))
+                    layer.stroke(path, with: .color(color.opacity(strokeOpacity)), style: StrokeStyle(lineWidth: 0.8, lineJoin: .round))
+                }
+            }
+            if isSelected { marker(&context, at: base, number: i + 1) }
         }
     }
 
@@ -110,8 +198,8 @@ enum ChevronLayer {
 
     private static func marker(_ context: inout GraphicsContext, at p: CGPoint, number: Int) {
         let circle = Path(ellipseIn: CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20))
-        context.fill(circle, with: .color(.black.opacity(0.75)))
-        context.stroke(circle, with: .color(.white), lineWidth: 2)
+        context.fill(circle, with: .color(.black.opacity(0.6)))
+        context.stroke(circle, with: .color(.accentColor), lineWidth: 2)
         context.draw(Text("\(number)").font(.system(size: 10, weight: .bold)).foregroundColor(.white), at: p, anchor: .center)
     }
 

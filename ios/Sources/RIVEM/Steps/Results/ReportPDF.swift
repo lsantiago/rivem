@@ -48,13 +48,14 @@ struct ReportFrameView: View {
     let image: CGImage
     let imageSize: CGSize
     let results: [SectionResult]
+    let worldToPixel: Matrix3?
 
     var body: some View {
         let range: ClosedRange<Double> = ReportPDF.stationRange(results)
         Canvas { (context: inout GraphicsContext, size: CGSize) in
             let layout = CanvasLayout(viewSize: size, imageSize: imageSize, zoom: 1, offset: .zero)
             context.draw(Image(decorative: image, scale: 1), in: layout.imageRect)
-            ChevronLayer.draw(&context, layout: layout, results: results, range: range, time: 0, selected: nil)
+            ChevronLayer.draw(&context, layout: layout, results: results, worldToPixel: worldToPixel, range: range, time: 0, selected: nil)
         }
     }
 }
@@ -184,7 +185,8 @@ private struct ReportPage: View {
                 Text("\(Fmt.percent(r.measuredQ, 1)) medido · α \(Fmt.num(r.alpha, 2))").font(.system(size: 9)).foregroundStyle(.secondary)
             }
             if let image = frame, frameSize.width > 0 {
-                ReportFrameView(image: image, imageSize: frameSize, results: [r])
+                ReportFrameView(image: image, imageSize: frameSize, results: [r],
+                                worldToPixel: (try? project.readMatrix()).flatMap { try? $0.inverse() })
                     .frame(width: 539, height: 539 * frameSize.height / frameSize.width)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             }

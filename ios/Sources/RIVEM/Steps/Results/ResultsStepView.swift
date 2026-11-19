@@ -20,6 +20,8 @@ struct ResultsStepView: View {
     @State private var mode: CanvasMode = .section
     @State private var selected: StationRef? = nil
     @State private var reportURL: URL? = nil
+    /// Inverse of the pixel → world matrix, to project desktop's chevron glyph (built in metres).
+    @State private var worldToPixel: Matrix3? = nil
 
     enum CanvasMode: String, CaseIterable, Identifiable {
         case section = "Sección"
@@ -44,9 +46,10 @@ struct ResultsStepView: View {
         let results: [SectionResult] = self.results
         let range: ClosedRange<Double> = stationRange
         let selected: StationRef? = self.selected
+        let inverse: Matrix3? = worldToPixel
         let layer: ((inout GraphicsContext, CanvasLayout, Double) -> Void)? = mode == .section
             ? { (context: inout GraphicsContext, layout: CanvasLayout, time: Double) in
-                ChevronLayer.draw(&context, layout: layout, results: results, range: range, time: time, selected: selected)
+                ChevronLayer.draw(&context, layout: layout, results: results, worldToPixel: inverse, range: range, time: time, selected: selected)
             }
             : nil
         return ImageCanvas(image: model.firstFrame, imageSize: model.frameSize,
@@ -168,6 +171,7 @@ struct ResultsStepView: View {
         guard !loaded, let project = model.project else { return }
         loaded = true
         results = ResultsPipeline.read(project)
+        worldToPixel = (try? project.readMatrix()).flatMap { try? $0.inverse() }
         if let first = results.first {
             interpolate = first.interpolated
             seeding = first.artificialSeeding
