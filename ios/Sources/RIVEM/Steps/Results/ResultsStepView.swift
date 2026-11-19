@@ -58,6 +58,7 @@ struct ResultsStepView: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 190)
+                    .environment(\.colorScheme, .dark)
                     .padding(8)
                 }
             }
@@ -75,11 +76,14 @@ struct ResultsStepView: View {
             }
     }
 
-    /// 0 … the highest station velocity (desktop's results scale).
+    /// 0 … the highest velocity of the stations that carry discharge (desktop's results scale: bank stations with
+    /// zero depth are left out, as desktop shows them without value).
     private var stationRange: ClosedRange<Double> {
         var top: Double = 0
         for r in results {
-            for v in r.velocity where v.isFinite { top = max(top, v) }
+            for i in 0..<r.stationCount where ChevronLayer.contributes(r, i) {
+                if let v = r.value(r.velocity, i) { top = max(top, v) }
+            }
         }
         return 0...max(top, 0.01)
     }

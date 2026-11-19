@@ -53,7 +53,7 @@ enum ChevronLayer {
 
             let span: Double = max(range.upperBound - range.lowerBound, 1e-9)
             for i in 0..<min(n, r.streamX.count, r.streamY.count) {
-                guard let v = r.value(r.velocity, i), r.stationX[i].isFinite, r.stationY[i].isFinite,
+                guard contributes(r, i), let v = r.value(r.velocity, i), r.stationX[i].isFinite, r.stationY[i].isFinite,
                       r.streamX[i].isFinite, r.streamY[i].isFinite else { continue }
                 let p: CGPoint = layout.view(Point2(r.stationX[i], r.stationY[i]))
                 let q: CGPoint = layout.view(Point2(r.stationX[i] + r.streamX[i], r.stationY[i] + r.streamY[i]))
@@ -69,6 +69,13 @@ enum ChevronLayer {
                 }
             }
         }
+    }
+
+    /// A station with water and a velocity: dry bank stations (depth 0) carry no discharge and get no chevron.
+    static func contributes(_ r: SectionResult, _ i: Int) -> Bool {
+        guard r.value(r.velocity, i) != nil else { return false }
+        if let d = r.value(r.depth, i) { return d > 0 }
+        return true
     }
 
     /// Three chevrons travelling through the station, fading in and out.
