@@ -46,6 +46,16 @@ struct ProcessingStepView: View {
     private var running: Bool { cancelFlag != nil }
 
     var body: some View {
+        CanvasStepLayout {
+            PairPreview(model: model)
+        } controls: {
+            form
+        }
+        .onAppear(perform: load)
+        .onDisappear { cancelFlag?.cancel() }
+    }
+
+    private var form: some View {
         Form {
             ProcessingInputSection(model: model)
             Section("Ventana de interrogación") {
@@ -89,8 +99,6 @@ struct ProcessingStepView: View {
                 }
             }
         }
-        .onAppear(perform: load)
-        .onDisappear { cancelFlag?.cancel() }
     }
 
     private var runSection: some View {
@@ -205,6 +213,81 @@ struct ProcessingStepView: View {
             }
             cancelFlag = nil
             setScreenAwake(false)
+        }
+    }
+}
+
+/// The frames with the PIV vectors (desktop's processing carousel): play / scrub the frames; "Mediana" shows the
+/// median field, "Par" the field of the pair starting at the frame on screen. Colours on the median field's range.
+private struct PairPreview: View {
+    let model: WorkflowModel
+    @State private var frames = FrameSequence()
+    @State private var piv: PIVResults? = nil
+    @State private var matrix: Matrix3? = nil
+    @State private var scale: Double = 10
+    @State private var range: ClosedRange<Double> = 0...1
+    @State private var median = true
+
+    var body: some View {
+        ImageCanvas(image: frames.image ?? model.firstFrame, imageSize: model.frameSize, segments: segments)
+            .overlay(alignment: .top) {
+                FramePlayerBar(sequence: frames, caption: caption) {
+                    if piv != nil {
+                        Button {
+                            median.toggle()
+                        } label: {
+                            Text(median ? "Mediana" : "Par").font(.caption.bold())
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityHint("Cambia entre el campo mediano y el del par en pantalla")
+                    }
+                }
+            }
+            .overlay(alignment: .bottomLeading) {
+                if piv != nil { VelocityLegend(range: range, units: model.units) }
+            }
+            .task(id: model.revision) { await reload() }
+            .onDisappear { frames.stop() }
+    }
+
+    private var caption: String {
+        let n: Int = frames.count
+        guard let p = piv, !median else { return "\(frames.index + 1)/\(n)" }
+        return "par \(min(frames.index, max(p.pairCount - 1, 0)) + 1)/\(p.pairCount)"
+    }
+
+    private var segments: [CanvasSegment] {
+        guard let p = piv else { return [] }
+        let pair: Int? = median ? nil : min(frames.index, p.pairCount - 1)
+        let vectors: [QuiverVector] = QuiverBuilder.vectors(p, pair: pair, scale: scale, matrix: matrix,
+                                                            frameInterval: model.settings?.frameInterval)
+        return QuiverBuilder.segments(vectors, range: range)
+    }
+
+    private func reload() async {
+        guard let project = model.project else { return }
+        let dt: Double = project.settings.frameInterval ?? 0.1
+        frames.configure(frames: project.frameFiles, rate: dt > 0 ? 1 / dt : 10)
+        guard model.hasResults else {
+            piv = nil
+            return
+        }
+        let width: Double = Double(model.frameSize.width)
+        let loaded: (PIVResults, Matrix3?, Double, ClosedRange<Double>)? = await Task.detached(priority: .utility) {
+            () -> (PIVResults, Matrix3?, Double, ClosedRange<Double>)? in
+            guard let p = try? project.readPIVResults() else { return nil }
+            let m: Matrix3? = try? project.readMatrix()
+            let s: Double = QuiverBuilder.scale(p, imageWidth: width)
+            let r: ClosedRange<Double> = QuiverBuilder.range(QuiverBuilder.vectors(p, pair: nil, scale: s, matrix: m,
+                                                                                   frameInterval: project.settings.frameInterval))
+            return (p, m, s, r)
+        }.value
+        if let l = loaded {
+            piv = l.0
+            matrix = l.1
+            scale = l.2
+            range = l.3
         }
     }
 }

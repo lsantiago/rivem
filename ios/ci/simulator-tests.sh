@@ -85,6 +85,9 @@ shot 18_example_vectors Ejemplo_Pisco results 12 -autotest_results_vectors 1
 shot 19_dark_results Ejemplo_Pisco results 12 -appearance dark
 shot 20_dark_station Ejemplo_Pisco results 12 -appearance dark -autotest_station 6
 shot 21_dark_list Ejemplo_Pisco list 8 -appearance dark
+shot 22_example_video Ejemplo_Pisco video 8
+shot 23_example_processing Ejemplo_Pisco processing 10
+shot 24_example_geometry_wizard Ejemplo_Pisco geometry 8
 cp "$DATA/Documents/Ejemplo_Pisco_informe.pdf" screenshots/ 2>/dev/null || true
 
 # The app must not have rewritten the desktop files just by opening them.

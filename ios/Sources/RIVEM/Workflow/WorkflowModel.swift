@@ -22,6 +22,22 @@ enum WorkflowStep: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// Name for the wizard's previous / next buttons.
+    var shortTitle: String {
+        switch self {
+        case .summary: return "Resumen"
+        case .video: return "Video"
+        case .geometry: return "Georreferenciación"
+        case .sections: return "Secciones"
+        case .processing: return "PIV"
+        case .results: return "Resultados"
+        case .export: return "Exportar"
+        }
+    }
+
+    /// Steps of the wizard bar, in order (the summary is reached from the step menu).
+    static let wizard: [WorkflowStep] = [.video, .geometry, .sections, .processing, .results, .export]
+
     var symbol: String {
         switch self {
         case .summary: return "doc.text.magnifyingglass"
@@ -53,6 +69,8 @@ final class WorkflowModel {
     private(set) var hasResults = false
     private(set) var hasVideo = false
     private(set) var maskOverlay: CGImage?
+    /// Bumped on every reload: views that read files (PIV field…) refresh with `.task(id: model.revision)`.
+    private(set) var revision: Int = 0
     private var thumbnailKey: String = ""
 
     init(folder: URL) {
@@ -68,6 +86,7 @@ final class WorkflowModel {
     }
 
     func reload() {
+        revision += 1
         do {
             let p = try RiverProject.open(folder)
             project = p

@@ -1,8 +1,10 @@
+import AVKit
 import RiverCore
 import SwiftUI
 
-/// Step 1, desktop "Video Range": start/end time, step and resize factor → `FrameExtractor` → `frames/` and
-/// `video_range`.
+/// Step 1, desktop "Video Range": the video plays on top (start / end can be set at the paused position); start/end
+/// time, step and resize factor → `FrameExtractor` → `frames/` and `video_range`. Without the video (projects made
+/// from frames, like the pisco example) the extracted frames play instead.
 struct VideoRangeView: View {
     let model: WorkflowModel
 
@@ -15,10 +17,70 @@ struct VideoRangeView: View {
     @State private var message: String? = nil
     @State private var error: String? = nil
     @State private var loaded = false
+    @State private var player: AVPlayer? = nil
+    @State private var frames = FrameSequence()
 
     private static let factors: [Double] = [1, 0.75, 0.5, 0.25]
 
     var body: some View {
+        Group {
+            if model.hasVideo || model.frameCount > 0 {
+                CanvasStepLayout {
+                    media
+                } controls: {
+                    form
+                }
+            } else {
+                form
+            }
+        }
+        .onAppear(perform: setupMedia)
+        .onDisappear {
+            player?.pause()
+            frames.stop()
+        }
+    }
+
+    @ViewBuilder
+    private var media: some View {
+        if let player = player {
+            VideoPlayer(player: player)
+                .background(Color.black)
+        } else {
+            ImageCanvas(image: frames.image ?? model.firstFrame, imageSize: model.frameSize)
+                .overlay(alignment: .top) {
+                    FramePlayerBar(sequence: frames, caption: frameCaption)
+                }
+        }
+    }
+
+    /// Source frame number and its time, from the file name (`{index:010d}.jpg`).
+    private var frameCaption: String {
+        guard frames.index < frames.count, let n = Int(frames.frames[frames.index].deletingPathExtension().lastPathComponent) else {
+            return "\(frames.index + 1)/\(frames.count)"
+        }
+        return "frame \(n) · \(Fmt.num(Double(n) / fps, 2)) s"
+    }
+
+    private func setupMedia() {
+        guard let project = model.project else { return }
+        if player == nil, let url = ProjectFiles.videoURL(project) {
+            player = AVPlayer(url: url)
+        } else if player == nil {
+            let dt: Double = project.settings.frameInterval ?? 0.1
+            frames.configure(frames: project.frameFiles, rate: dt > 0 ? 1 / dt : 10)
+        }
+    }
+
+    private func mark(start: Bool) {
+        guard let p = player else { return }
+        p.pause()
+        let t: Double = p.currentTime().seconds
+        guard t.isFinite else { return }
+        if start { startText = Fmt.num(t, 2) } else { endText = Fmt.num(t, 2) }
+    }
+
+    private var form: some View {
         Form {
             VideoInfoSection(model: model)
             Section("Rango") {
@@ -27,6 +89,15 @@ struct VideoRangeView: View {
                 }
                 LabeledContent("Fin (s)") {
                     TextField("fin", text: $endText).multilineTextAlignment(.trailing).decimalKeyboard()
+                }
+                if player != nil {
+                    HStack {
+                        Button { mark(start: true) } label: { Label("Inicio aquí", systemImage: "arrow.right.to.line") }
+                            .buttonStyle(.bordered)
+                        Spacer()
+                        Button { mark(start: false) } label: { Label("Fin aquí", systemImage: "arrow.left.to.line") }
+                            .buttonStyle(.bordered)
+                    }
                 }
                 Stepper("Paso: \(step) (uno de cada \(step) frames)", value: $step, in: 1...30)
                 Picker("Escala de los frames", selection: $factor) {
@@ -53,7 +124,7 @@ struct VideoRangeView: View {
                 if let m = message { Text(m).font(.callout).foregroundStyle(.secondary) }
                 ErrorBanner(message: error)
             } footer: {
-                Text("Como en RIVeR escritorio, el frame N del video se guarda como frames/N.jpg (10 dígitos) y el intervalo entre frames es paso / fps. La extracción no corrige lente ni estabiliza.")
+                Text("Pausa el video donde quieras empezar o terminar y toca «Inicio aquí» / «Fin aquí». Como en RIVeR escritorio, el frame N del video se guarda como frames/N.jpg (10 dígitos) y el intervalo entre frames es paso / fps. La extracción no corrige lente ni estabiliza.")
             }
         }
         .onAppear(perform: loadFromSettings)

@@ -110,22 +110,72 @@ private struct WorkflowStepRow: View {
     }
 }
 
-/// The screen of one step.
+/// The screen of one step, as a wizard like desktop's: a progress bar on top (tap a segment to jump), previous /
+/// next at the bottom (next is highlighted once the step is done, and says what is missing when it is not
+/// available yet), and a menu with every step. Moving between steps replaces the content in place, so going on
+/// never needs a trip back to the step list.
 struct WorkflowStepScreen: View {
-    let step: WorkflowStep
     let model: WorkflowModel
+    @State private var current: WorkflowStep
+
+    init(step: WorkflowStep, model: WorkflowModel) {
+        self.model = model
+        _current = State(initialValue: step)
+    }
 
     var body: some View {
         content
-            .navigationTitle(step.title)
+            .id(current)
+            .transition(.opacity)
+            .navigationTitle(current.title)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) { stepMenu }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if WorkflowStep.wizard.contains(current) {
+                    StepProgressBar(current: current, model: model, go: go)
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if WorkflowStep.wizard.contains(current) {
+                    StepNavigationBar(current: current, model: model, go: go)
+                }
+            }
+    }
+
+    private func go(_ step: WorkflowStep) {
+        model.reload()
+        guard step != current, model.isAvailable(step) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { current = step }
+    }
+
+    private var stepMenu: some View {
+        Menu {
+            ForEach(WorkflowStep.allCases) { (s: WorkflowStep) in
+                Button {
+                    go(s)
+                } label: {
+                    if s == current {
+                        Label(s.title, systemImage: "arrowtriangle.right.fill")
+                    } else if model.isDone(s) {
+                        Label(s.title, systemImage: "checkmark.circle.fill")
+                    } else {
+                        Label(s.title, systemImage: s.symbol)
+                    }
+                }
+                .disabled(!model.isAvailable(s))
+            }
+        } label: {
+            Label("Pasos", systemImage: "list.bullet")
+        }
     }
 
     @ViewBuilder
     private var content: some View {
-        switch step {
+        switch current {
         case .summary:
             ProjectDetailView(summary: ProjectSummary(folder: model.folder))
         case .video:
@@ -140,6 +190,104 @@ struct WorkflowStepScreen: View {
             ResultsStepView(model: model)
         case .export:
             ExportStepView(model: model)
+        }
+    }
+}
+
+/// Six segments (done, current, pending) with "Paso n de 6" and the next step; tapping a segment jumps to it.
+private struct StepProgressBar: View {
+    let current: WorkflowStep
+    let model: WorkflowModel
+    let go: (WorkflowStep) -> Void
+
+    var body: some View {
+        let steps: [WorkflowStep] = WorkflowStep.wizard
+        let position: Int = (steps.firstIndex(of: current) ?? 0) + 1
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                ForEach(steps) { (s: WorkflowStep) in
+                    Capsule()
+                        .fill(color(s))
+                        .frame(height: 5)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                        .onTapGesture { go(s) }
+                        .accessibilityElement()
+                        .accessibilityLabel(s.title)
+                        .accessibilityAddTraits(.isButton)
+                }
+            }
+            HStack {
+                Text("Paso \(position) de \(steps.count)").font(.caption.bold())
+                Spacer()
+                if position < steps.count {
+                    Text("Siguiente: \(steps[position].shortTitle)").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 6)
+        .background(.bar)
+    }
+
+    private func color(_ s: WorkflowStep) -> Color {
+        if s == current { return Color.primary }
+        if model.isDone(s) { return Color.accentColor }
+        return model.isAvailable(s) ? Color.secondary.opacity(0.45) : Color.secondary.opacity(0.2)
+    }
+}
+
+/// Previous / next buttons. Next is prominent when the current step is done; when the next step is not available
+/// yet, it is disabled and the requirement is shown.
+private struct StepNavigationBar: View {
+    let current: WorkflowStep
+    let model: WorkflowModel
+    let go: (WorkflowStep) -> Void
+
+    var body: some View {
+        let steps: [WorkflowStep] = WorkflowStep.wizard
+        let i: Int = steps.firstIndex(of: current) ?? 0
+        let previous: WorkflowStep? = i > 0 ? steps[i - 1] : nil
+        let next: WorkflowStep? = i + 1 < steps.count ? steps[i + 1] : nil
+        HStack(alignment: .center, spacing: 12) {
+            if let p = previous {
+                Button {
+                    go(p)
+                } label: {
+                    Label(p.shortTitle, systemImage: "chevron.left").lineLimit(1)
+                }
+                .buttonStyle(.bordered)
+            }
+            Spacer(minLength: 4)
+            if let n = next {
+                let available: Bool = model.isAvailable(n)
+                VStack(alignment: .trailing, spacing: 2) {
+                    if model.isDone(current) && available {
+                        Button { go(n) } label: { nextLabel(n) }
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Button { go(n) } label: { nextLabel(n) }
+                            .buttonStyle(.bordered)
+                            .disabled(!available)
+                    }
+                    if !available {
+                        Text(model.requirement(n))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private func nextLabel(_ n: WorkflowStep) -> some View {
+        HStack(spacing: 4) {
+            Text(n.shortTitle).lineLimit(1)
+            Image(systemName: "chevron.right")
         }
     }
 }

@@ -195,40 +195,9 @@ struct ResultsStepView: View {
     /// frame interval the speed is in pixels per pair. The colour range is the 2nd–98th percentile.
     nonisolated static func quiver(_ piv: PIVResults, imageWidth: Double, matrix: Matrix3?,
                                    frameInterval: Double?) -> QuiverField {
-        let n: Int = min(piv.x.count, piv.y.count, piv.uMedian.count, piv.vMedian.count)
-        var magnitudes: [Double] = []
-        for k in 0..<n {
-            let m: Double = hypot(piv.uMedian[k], piv.vMedian[k])
-            if m.isFinite { magnitudes.append(m) }
-        }
-        guard !magnitudes.isEmpty else { return QuiverField(vectors: [], range: 0...1) }
-        magnitudes.sort()
-        let typical: Double = max(magnitudes[magnitudes.count / 2], 1e-6)
-        let scale: Double = min(max(0.04 * imageWidth / typical, 1), 200)
-        let stride: Int = max(1, Int((Double(n) / 1200).squareRoot().rounded(.up)))
-        var out: [QuiverVector] = []
-        for row in Swift.stride(from: 0, to: piv.rows, by: stride) {
-            for col in Swift.stride(from: 0, to: piv.columns, by: stride) {
-                let k: Int = row * piv.columns + col
-                guard k < n else { continue }
-                let x: Double = piv.x[k], y: Double = piv.y[k]
-                let u: Double = piv.uMedian[k], v: Double = piv.vMedian[k]
-                guard x.isFinite, y.isFinite, u.isFinite, v.isFinite else { continue }
-                var speed: Double = hypot(u, v)
-                if let m = matrix, let dt = frameInterval, dt > 0 {
-                    let w0: Point2 = m.apply(Point2(x, y))
-                    let w1: Point2 = m.apply(Point2(x + u, y + v))
-                    speed = w0.distance(to: w1) / dt
-                }
-                guard speed.isFinite else { continue }
-                out.append(QuiverVector(a: Point2(x, y), b: Point2(x + u * scale, y + v * scale), speed: speed))
-            }
-        }
-        let speeds: [Double] = out.map { $0.speed }.sorted()
-        guard !speeds.isEmpty else { return QuiverField(vectors: [], range: 0...1) }
-        let lo: Double = speeds[Int(Double(speeds.count - 1) * 0.02)]
-        let hi: Double = max(speeds[Int(Double(speeds.count - 1) * 0.98)], lo + 1e-6)
-        return QuiverField(vectors: out, range: lo...hi)
+        let scale: Double = QuiverBuilder.scale(piv, imageWidth: imageWidth)
+        let vectors: [QuiverVector] = QuiverBuilder.vectors(piv, pair: nil, scale: scale, matrix: matrix, frameInterval: frameInterval)
+        return QuiverField(vectors: vectors, range: QuiverBuilder.range(vectors))
     }
 
     private func recompute() {
