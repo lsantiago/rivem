@@ -7,6 +7,9 @@ public enum SectionError: Error, Equatable, CustomStringConvertible {
     case dryCrossSection
     /// `left_station` puts the drawn left point outside the bathymetry (desktop: `CrossSections.Errors.leftBank`).
     case leftStationOutOfRange
+    /// The level is above both banks once the GUI rounds the bed to cm: desktop finds no water-edge
+    /// intersection when it reopens the project and its results screen crashes (blank window).
+    case levelAboveBanks(maximum: Double)
     case missingKey(String)
     case invalidValue(String)
 
@@ -15,6 +18,9 @@ public enum SectionError: Error, Equatable, CustomStringConvertible {
         case .levelDoesNotCrossBathymetry: return "El nivel del agua no corta la batimetría."
         case .dryCrossSection: return "La sección está seca: ningún punto de la batimetría queda bajo el nivel del agua."
         case .leftStationOutOfRange: return "La progresiva de la margen izquierda está fuera de la batimetría."
+        case let .levelAboveBanks(maximum):
+            return String(format: "El nivel del agua queda por encima de las dos orillas de la batimetría (redondeadas al cm, "
+                + "como hace RIVeR escritorio). Usa un nivel de %.2f m o menor, o agrega puntos más altos en las orillas.", maximum)
         case let .missingKey(k): return "Falta la clave '\(k)' en la sección."
         case let .invalidValue(why): return "Valor no válido: \(why)"
         }
@@ -169,6 +175,12 @@ public enum SectionBuilder {
         guard numStations >= 2 else { throw SectionError.invalidValue("num_stations < 2") }
         guard drawnLeft != drawnRight else { throw SectionError.invalidValue("los dos extremos de la línea coinciden") }
         let lim = try limits(bathymetry: bathymetry, level: level)
+        // Desktop reopens a section with getBathimetryValues(line, level): without a water-edge intersection it
+        // drops the bathymetry and the results screen crashes (blank window). Reject such levels here.
+        if level != nil, intersectionPointsGUI(xs: bathymetry.stations, ys: bathymetry.elevations, level: lim.level).isEmpty {
+            let ys = bathymetry.elevations
+            throw SectionError.levelAboveBanks(maximum: min(round2(ys[0]), round2(ys[ys.count - 1])))
+        }
         guard lim.width > 0 else { throw SectionError.levelDoesNotCrossBathymetry }
         let shifted: Double = lim.x1Intersection + leftStation
         guard shifted >= lim.xMin, shifted <= lim.xMax else { throw SectionError.leftStationOutOfRange }

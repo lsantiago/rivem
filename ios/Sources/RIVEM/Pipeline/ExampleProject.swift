@@ -7,7 +7,7 @@ import RiverCore
 ///
 /// Data (RIVeR 3.8.3, commit `ea65612`, AGPL-3.0, © ORUS): the frames `examples/data/frames/pisco` (downloaded into
 /// `ios/Examples/pisco/frames` by CI and bundled), `examples/data/bathymetry/pisco_section.csv`, and the parameters
-/// of the notebooks `03_cross_sections` / `05_discharge_calculation` (fps 25, step 2, level 1.765 m, 15 stations,
+/// of the notebooks `03_cross_sections` / `05_discharge_calculation` (fps 25, step 2, level 1.765 m → 1.76 m here, 15 stations,
 /// alpha 1 → Q = 50.52 m³/s in RIVeR). RIVeR publishes only the pixel → world matrix of pisco, not the control
 /// points: points 1 and 4 are the section ends of the notebook, 2 and 3 are upstream on each bank, and the six
 /// distances are measured on RIVeR's matrix, so the oblique solution reproduces it (up to a rigid motion).
@@ -24,7 +24,9 @@ enum ExampleProject {
     static let sectionName = "Seccion_Pisco"
     static let sectionLeft = Point2(49.94, 935.04)
     static let sectionRight = Point2(1800.19, 687.6)
-    static let level: Double = 1.765
+    /// The notebook uses 1.765 m, the bank elevation itself; desktop's GUI rounds the bed to cm (1.76) and cannot
+    /// reopen a level above both banks, so the GUI's own default level (lower bank to cm) is used.
+    static let level: Double = 1.76
     static let numStations = 15
     static let alpha: Double = 1
     static let bathymetryFile = "pisco_section.csv"

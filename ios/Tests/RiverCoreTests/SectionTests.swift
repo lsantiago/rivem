@@ -318,7 +318,7 @@ final class SectionTests: XCTestCase {
         let drawnR = try XCTUnwrap(ref.pixelRight)
         let s = try SectionBuilder.build(name: "CS_default_1", drawnLeft: drawnL, drawnRight: drawnR, matrix: m,
                                          bathymetry: bath, bathymetryPath: "pisco_section.csv", leftStation: 2,
-                                         level: 1.765, numStations: 15, alpha: 0.854)
+                                         level: 1.76, numStations: 15, alpha: 0.854)
         XCTAssertEqual(s.json.keys, ["bath", "rw_length", "level", "left_station", "east_l", "north_l", "east_r", "north_r",
                                      "xl", "yl", "xr", "yr", "dir_east_l", "dir_north_l", "dir_east_r", "dir_north_r",
                                      "dir_xl", "dir_yl", "dir_xr", "dir_yr", "num_stations", "alpha"])
@@ -326,7 +326,12 @@ final class SectionTests: XCTestCase {
         XCTAssertEqual(s.alpha, 0.85)
         XCTAssertEqual(s.json["num_stations"], .int(15))
         XCTAssertEqual(s.json["left_station"], .int(2))
-        // Bed elevations rounded to cm: both ends 1.76 ≤ 1.765, so the whole profile is wet.
+        // Bed elevations rounded to cm: both ends 1.76 ≤ 1.76, so the whole profile is wet. The notebook's 1.765 is
+        // above both rounded banks: desktop could not reopen it (blank results screen), so it is rejected.
+        XCTAssertThrowsError(try SectionBuilder.build(name: "CS", drawnLeft: drawnL, drawnRight: drawnR, matrix: m,
+                                                      bathymetry: bath, bathymetryPath: "pisco_section.csv", level: 1.765)) { e in
+            XCTAssertEqual(e as? SectionError, .levelAboveBanks(maximum: 1.76))
+        }
         XCTAssertEqual(try XCTUnwrap(s.realWorldLength), 22.656012, accuracy: 1e-9)
         let wl = try XCTUnwrap(s.worldLeft), wr = try XCTUnwrap(s.worldRight)
         let dl = m.apply(drawnL), dr = m.apply(drawnR)
