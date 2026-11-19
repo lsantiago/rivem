@@ -105,6 +105,17 @@ final class QualityTests: XCTestCase {
         XCTAssertNil(uav.check(.measured))
     }
 
+    func testBankStationFasterThanItsNeighbourIsDoubtful() {
+        // Like pisco's station 14 (4.87 m/s next to 2.84 m/s and a dry bank).
+        var st = channel(std: 0.1)
+        st[10].velocity = 1.8
+        XCTAssertEqual(GaugingQuality.doubtfulStations(st).map(\.index), [10])
+        XCTAssertEqual(GaugingQuality.doubtfulStations(st).first?.reasons, [.jump])
+        // Slower towards the bank is normal.
+        st[10].velocity = 0.4
+        XCTAssertEqual(GaugingQuality.doubtfulStations(st), [])
+    }
+
     func testDoubtfulStations() {
         var st = channel(std: 0.1)
         st[3].velocity = 2.5                    // jump against 1 and 1

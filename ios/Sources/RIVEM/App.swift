@@ -115,7 +115,8 @@ struct HomeView: View {
             }
             .navigationTitle("RIVEM")
             .navigationDestination(for: ProjectSummary.self) { summary in
-                WorkflowView(folder: summary.folder, initialStep: initialStep(for: summary), autoOpen: autoOpen(for: summary))
+                WorkflowView(folder: summary.folder, initialStep: initialStep(for: summary), autoOpen: autoOpen(for: summary),
+                             openSite: isAutotestFolder(summary) && Autotest.showSite)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -199,7 +200,11 @@ struct HomeView: View {
     /// `-autotest_step list` shows the step list of the opened project without jumping into a step.
     private func autoOpen(for summary: ProjectSummary) -> Bool {
         guard let folder = autotestFolder, folder.standardizedFileURL == summary.folder.standardizedFileURL else { return true }
-        return !Autotest.showStepList
+        return !Autotest.showStepList && !Autotest.showSite
+    }
+
+    private func isAutotestFolder(_ summary: ProjectSummary) -> Bool {
+        autotestFolder?.standardizedFileURL == summary.folder.standardizedFileURL
     }
 
     /// CI screenshot hooks: `-autotest_open_first 1`, or `-autotest_open_project <name> [-autotest_step <step>]`.

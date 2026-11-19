@@ -115,6 +115,17 @@ struct ResultsStepView: View {
     private var units: UnitDisplay { model.units }
 
     private var resultsForm: some View {
+        ScrollViewReader { (proxy: ScrollViewProxy) in
+            form
+                .onChange(of: assessments.count) {
+                    if Autotest.resultsScroll == "quality", let first = assessments.first {
+                        proxy.scrollTo("quality-\(first.name)", anchor: .top)
+                    }
+                }
+        }
+    }
+
+    private var form: some View {
         Form {
             if !results.isEmpty {
                 Section {
@@ -131,6 +142,7 @@ struct ResultsStepView: View {
                 QualitySection(assessment: a, units: units, showName: assessments.count > 1) { (station: Int) in
                     select(sectionNamed: a.name, station: station)
                 }
+                .id("quality-\(a.name)")
             }
             if !results.isEmpty {
                 UncertaintyAssumptionsSection(assumptions: $assumptions, units: units, onChange: saveAssumptions)

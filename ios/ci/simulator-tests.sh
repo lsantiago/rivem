@@ -88,6 +88,9 @@ shot 21_dark_list Ejemplo_Pisco list 8 -appearance dark
 shot 22_example_video Ejemplo_Pisco video 8
 shot 23_example_processing Ejemplo_Pisco processing 10
 shot 24_example_geometry_wizard Ejemplo_Pisco geometry 8
+shot 25_example_quality Ejemplo_Pisco results 12 -autotest_results_scroll quality
+shot 26_site_list Sitio_Prueba list 8
+shot 27_site_curve Sitio_Prueba site 8
 cp "$DATA/Documents/Ejemplo_Pisco_informe.pdf" screenshots/ 2>/dev/null || true
 
 # The app must not have rewritten the desktop files just by opening them.
@@ -132,6 +135,10 @@ if [ -f "$VIDEO" ] && ! grep -q "^PASS video extraccion alternativa" screenshots
 fi
 if ! grep -q "^PASS ejemplo caudal" screenshots/autotest_summary.txt 2>/dev/null; then
   echo "The pisco example (install + PIV + discharge) did not pass"
+  STATUS=1
+fi
+if ! grep -q "^PASS ejemplo sitio curva" screenshots/autotest_summary.txt 2>/dev/null; then
+  echo "The site rating-curve check did not pass"
   STATUS=1
 fi
 if ! grep -q "^PASS ejemplo calidad" screenshots/autotest_summary.txt 2>/dev/null; then

@@ -70,9 +70,13 @@ enum Autotest {
     }
 
     /// `-autotest_results_vectors 1`: the Results screen opens on the coloured PIV field.
+    /// `-autotest_results_scroll quality`: scroll the results form to the quality section.
+    static var resultsScroll: String? { UserDefaults.standard.string(forKey: "autotest_results_scroll") }
     static var resultsVectors: Bool { UserDefaults.standard.bool(forKey: "autotest_results_vectors") }
 
     static var showStepList: Bool { UserDefaults.standard.string(forKey: "autotest_step") == "list" }
+    /// `-autotest_step site`: the site screen (rating curve) of the opened project.
+    static var showSite: Bool { UserDefaults.standard.string(forKey: "autotest_step") == "site" }
 
     static var stepToOpen: WorkflowStep? {
         guard let raw = UserDefaults.standard.string(forKey: "autotest_step") else { return nil }

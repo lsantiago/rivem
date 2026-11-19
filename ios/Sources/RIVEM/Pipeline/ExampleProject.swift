@@ -183,11 +183,64 @@ enum ExampleAutotest {
             case let .failure(e):
                 report("informe PDF", false, "\(e)")
             }
+            try siteChecks(root: root, template: RiverProject.open(project.folder), report: report)
+
             let issues = try RiverProject.open(project.folder).compatibilityIssues()
             report("compatibilidad escritorio", issues.isEmpty, issues.isEmpty ? "sin problemas" : issues.map { $0.message }.joined(separator: "; "))
         } catch {
             report("ejecucion", false, "\(error)")
         }
         return lines
+    }
+
+    /// Site: a new visit carries the configuration without results; five copies of the example at known levels and
+    /// discharges (Q = 20·(h − 1)^1.6) give back that rating curve. The copies stay as `Sitio_Prueba` for the
+    /// screenshot of the site screen.
+    static let testSite = "Sitio_Prueba"
+
+    private static func siteChecks(root: URL, template: RiverProject, report: (String, Bool, String) -> Void) throws {
+        let fm = FileManager.default
+        guard let video = template.settings.video else {
+            report("sitio visita nueva", false, "el ejemplo no tiene bloque video")
+            return
+        }
+        var visit: RiverProject = try RiverProject.create(in: root, name: ExampleProject.projectName, footage: .oblique, video: video)
+        defer { try? fm.removeItem(at: visit.folder) }
+        try SitePipeline.carry(from: template, into: &visit, level: 1.70)
+        let reopened: RiverProject = try RiverProject.open(visit.folder)
+        let sections: [CrossSection] = (try reopened.readCrossSections())?.sections ?? []
+        let ok: Bool = (try reopened.readMatrix()) != nil
+            && !sections.isEmpty
+            && sections.allSatisfy { $0.level == 1.70 && !$0.hasResults && $0.missingKeys.isEmpty }
+            && reopened.settings.pivResultsPath == nil
+            && reopened.settings.controlPoints == template.settings.controlPoints
+            && reopened.settings.videoRange?.step == template.settings.videoRange?.step
+            && reopened.settings.json[SitePipeline.templateKey]?.stringValue == template.folder.lastPathComponent
+            && reopened.frameFiles.isEmpty
+        report("sitio visita nueva", ok, "\(sections.count) secciones a nivel 1.70 sin resultados, matriz y puntos copiados, "
+               + "\(reopened.frameFiles.count) frames, paso \(reopened.settings.videoRange?.step ?? 0)")
+
+        let site: URL = root.appendingPathComponent(testSite, isDirectory: true)
+        try? fm.removeItem(at: site)
+        try fm.createDirectory(at: site, withIntermediateDirectories: true)
+        let levels: [Double] = [1.45, 1.60, 1.76, 1.95, 2.20]
+        for (k, h) in levels.enumerated() {
+            let dest: URL = site.appendingPathComponent(String(format: "202601%02ldT1000", k + 1), isDirectory: true)
+            try fm.copyItem(at: template.folder, to: dest)
+            var p: RiverProject = try RiverProject.open(dest)
+            p.settings.json["river_name"] = .string("Sitio de prueba")
+            try p.save()
+            guard var s = try p.readCrossSections() else { continue }
+            for i in s.sections.indices {
+                s.sections[i].json["level"] = .double(h)
+                s.sections[i].json["total_Q"] = .double(20 * pow(h - 1.0, 1.6))
+            }
+            try p.writeCrossSections(s)
+        }
+        let gaugings: [SiteGauging] = SitePipeline.gaugings(siteFolder: site)
+        let curve: RatingCurve? = RatingCurve.fit(gaugings.map { RatingPoint(level: $0.level, discharge: $0.discharge) })
+        let fits: Bool = curve.map { abs($0.b - 1.6) < 0.02 && abs($0.h0 - 1.0) < 0.02 && abs($0.a - 20) < 0.5 } ?? false
+        report("sitio curva", gaugings.count == levels.count && fits,
+               "\(gaugings.count) aforos; " + (curve.map { String(format: "Q = %.3f·(h − %.3f)^%.3f, R² %.5f", $0.a, $0.h0, $0.b, $0.r2) } ?? "sin ajuste"))
     }
 }

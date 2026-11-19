@@ -10,9 +10,26 @@ Estado: ✅ hecho · 🚧 en curso · ⬜ pendiente.
 
 | # | Funcionalidad | Estado |
 |---|---|---|
-| 1 | **Perfil de sitio + curva nivel–caudal**: guardar la georreferenciación, la sección y la batimetría de una estación; en la siguiente visita solo grabar e ingresar el nivel. Con varios aforos, ajustar la curva H–Q | 🚧 |
-| 2 | **Distancias con ARKit / LiDAR**: tocar los puntos de control en la pantalla y que el iPhone mida las 6 distancias, sin cinta | 🚧 |
-| 3 | **Semáforo de calidad + incertidumbre**: nota de confianza del aforo y Q ± U (95 %) por Monte Carlo | 🚧 |
+| 1 | **Perfil de sitio + curva nivel–caudal**: guardar la georreferenciación, la sección y la batimetría de una estación; en la siguiente visita solo grabar e ingresar el nivel. Con varios aforos, ajustar la curva H–Q | ✅ v0.6.1 (falta probar en campo) |
+| 2 | **Distancias con ARKit / LiDAR**: apuntar a los puntos de control con el iPhone y que mida las 6 distancias, sin cinta | ✅ v0.6.1 (falta validar contra cinta en el iPhone) |
+| 3 | **Semáforo de calidad + incertidumbre**: nota de confianza del aforo y Q ± U (95 %) por Monte Carlo | ✅ v0.6.0 |
+
+### Cómo se usan
+
+- **Calidad (Resultados)**: debajo del caudal aparece «± U (95 %)» y la sección «Calidad del aforo» con un semáforo y
+  siete criterios: caudal medido, mayor aporte de una estación (ISO 748: ≤ 10 %), estaciones con agua, variabilidad
+  entre pares, estaciones dudosas, incertidumbre y ajuste de la georreferenciación. Las estaciones dudosas se tocan para
+  verlas en la imagen y llevan ⚠︎ en la tabla. «De dónde viene la incertidumbre» reparte la varianza entre α, velocidad,
+  nivel, batimetría, escala e interpolación. Los supuestos (nivel ±1 cm, batimetría ±2 cm, α ± 0,05) se cambian en
+  «Supuestos de la incertidumbre» y se guardan en el proyecto. También van al informe PDF.
+- **Sitio**: en la pantalla del aforo, sección «Sitio». «Nueva visita con esta configuración» pide solo el video y el
+  nivel: copia puntos de control, matriz, secciones (sin resultados), batimetría, máscara y parámetros PIV a una
+  carpeta nueva del mismo sitio. La cámara debe quedar en el mismo lugar y con la misma resolución (si no, avisa).
+  «Aforos y curva nivel–caudal» lista las visitas con resultados, ajusta Q = a·(h − h₀)ᵇ (desde 3 aforos), muestra
+  el desvío de cada aforo y estima Q desde un nivel.
+- **AR**: en Georreferenciación oblicua, «Medir con la cámara (AR / LiDAR)». Se apunta la mira a los puntos 1–4 en
+  el mismo orden que en la imagen y se toca «Marcar». Las distancias son horizontales (el método supone los puntos
+  sobre el agua); avisa si los puntos difieren más de 10 cm en altura o están a más de 5 m del teléfono.
 
 ## 1. Medir en el sitio sin cinta
 
@@ -61,6 +78,6 @@ Estado: ✅ hecho · 🚧 en curso · ⬜ pendiente.
 1. La extracción alternativa pierde el último frame (88 de 89).
 2. Mostrar "—" en lugar de 0,00 en las estaciones de orilla (tabla e informe).
 3. Escala de colores ajustable o bloqueable.
-4. Marcar automáticamente las estaciones dudosas.
-5. Semáforo de residuos en la georreferenciación.
+4. ~~Marcar automáticamente las estaciones dudosas.~~ Hecho con el semáforo (v0.6.0).
+5. Semáforo de residuos en la georreferenciación (en Resultados ya está como criterio; falta en el paso 2).
 6. Datos de campo: GPS, fecha y hora, notas, sitio.

@@ -128,6 +128,8 @@ struct UnitDisplay {
     func velocity(_ ms: Double) -> Double { system == .imperial ? ms / Self.foot : ms }
     func area(_ m2: Double) -> Double { system == .imperial ? m2 / (Self.foot * Self.foot) : m2 }
     func discharge(_ m3s: Double) -> Double { system == .imperial ? m3s / (Self.foot * Self.foot * Self.foot) : m3s }
+    /// A length typed in the display unit, back to metres.
+    func lengthToSI(_ v: Double) -> Double { system == .imperial ? v * Self.foot : v }
 
     func lengthText(_ m: Double?, _ digits: Int = 2) -> String {
         guard let m = m else { return "—" }

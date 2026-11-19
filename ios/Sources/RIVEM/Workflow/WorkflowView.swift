@@ -8,24 +8,31 @@ struct WorkflowView: View {
     let initialStep: WorkflowStep?
     /// Jump to `initialStep` (or the suggested step) when the project opens.
     let autoOpen: Bool
+    /// Open the site screen when the project opens (CI screenshot hook).
+    let openSite: Bool
     @State private var model: WorkflowModel
     @State private var selected: WorkflowStep?
     @State private var didAutoOpen = false
+    @State private var showSite = false
+    @State private var creatingVisit = false
+    @State private var openedVisit: URL? = nil
 
     static let formatNote: String = "Cada paso se guarda en la carpeta del proyecto con el formato de RIVeR escritorio "
         + RiverCore.desktopCompatibility
         + ": copiando la carpeta al espacio de trabajo RIVeR del PC, el aforo se abre allí en el paso alcanzado."
 
-    init(folder: URL, initialStep: WorkflowStep? = nil, autoOpen: Bool = true) {
+    init(folder: URL, initialStep: WorkflowStep? = nil, autoOpen: Bool = true, openSite: Bool = false) {
         self.folder = folder
         self.initialStep = initialStep
         self.autoOpen = autoOpen
+        self.openSite = openSite
         _model = State(initialValue: WorkflowModel(folder: folder))
     }
 
     var body: some View {
         List {
             WorkflowHeader(model: model)
+            SiteSection(model: model, showSite: $showSite, creatingVisit: $creatingVisit)
             Section("Pasos") {
                 ForEach(WorkflowStep.allCases) { step in
                     WorkflowStepRow(step: step, model: model) { selected = step }
@@ -44,10 +51,25 @@ struct WorkflowView: View {
         .navigationDestination(item: $selected) { step in
             WorkflowStepScreen(step: step, model: model)
         }
+        .navigationDestination(isPresented: $showSite) {
+            SiteView(siteFolder: folder.deletingLastPathComponent(), units: model.units)
+        }
+        .navigationDestination(item: $openedVisit) { (visit: URL) in
+            WorkflowView(folder: visit)
+        }
+        .sheet(isPresented: $creatingVisit) {
+            if let template = model.project {
+                NewProjectView(workspace: Workspace(root: folder.deletingLastPathComponent().deletingLastPathComponent()),
+                               template: template) { (visit: URL) in
+                    openedVisit = visit
+                }
+            }
+        }
         .onAppear {
             model.reload()
             if !didAutoOpen {
                 didAutoOpen = true
+                if openSite { showSite = true }
                 if autoOpen, let step = initialStep ?? model.suggestedStep, model.isAvailable(step) {
                     selected = step
                 }
@@ -76,6 +98,34 @@ private struct WorkflowHeader: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+}
+
+/// The site this aforo belongs to (`RIVeR/<name>/`): its rating curve and a new visit with the same configuration.
+private struct SiteSection: View {
+    let model: WorkflowModel
+    @Binding var showSite: Bool
+    @Binding var creatingVisit: Bool
+
+    var body: some View {
+        Section {
+            Button {
+                showSite = true
+            } label: {
+                Label("Aforos y curva nivel–caudal", systemImage: "chart.line.uptrend.xyaxis")
+            }
+            if model.hasMatrix && model.hasSections {
+                Button {
+                    creatingVisit = true
+                } label: {
+                    Label("Nueva visita con esta configuración", systemImage: "arrow.triangle.2.circlepath.camera")
+                }
+            }
+        } header: {
+            Text("Sitio · \(model.folder.deletingLastPathComponent().lastPathComponent)")
+        } footer: {
+            Text("Una visita nueva reutiliza la georreferenciación, las secciones, la batimetría y los parámetros PIV: en campo solo grabas el video y lees el nivel.")
         }
     }
 }

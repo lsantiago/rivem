@@ -24,8 +24,13 @@ struct PickedMovie: Transferable {
 
 /// Step 0, desktop "New project" + "Footage": video source (camera, Photos, Files), footage type and name. The video
 /// is copied into the new project folder and `settings.video` is filled from its metadata (fps rounded like desktop).
+///
+/// With a `template` it creates a **new visit** of that aforo's site instead (RIVEM addition): same name folder, and the
+/// georeferencing, sections, bathymetry and PIV settings are reused (`SitePipeline`); only the video and the water
+/// level are asked.
 struct NewProjectView: View {
     let workspace: Workspace
+    var template: RiverProject? = nil
     let onCreated: (URL) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -43,6 +48,8 @@ struct NewProjectView: View {
     @State private var showingCamera = false
     @State private var busy = false
     @State private var error: String? = nil
+    /// New visit: water level in the project's display unit.
+    @State private var levelText: String = ""
 
     var body: some View {
         NavigationStack {
@@ -65,6 +72,9 @@ struct NewProjectView: View {
                     }
                     VideoSummary(url: videoURL, metadata: metadata, loading: busy && metadata == nil)
                 }
+                if let t = template {
+                    visitSection(t)
+                } else {
                 Section("Tipo de toma") {
                     Picker("Tipo de toma", selection: $footage) {
                         ForEach(Footage.allCases, id: \.self) { f in
@@ -87,17 +97,19 @@ struct NewProjectView: View {
                     TextField("Río (opcional)", text: $river)
                     TextField("Sitio (opcional)", text: $site)
                 }
+                }
                 Section {
                     Button {
                         create()
                     } label: {
-                        Label("Crear aforo", systemImage: "plus.circle.fill")
+                        Label(template == nil ? "Crear aforo" : "Crear visita", systemImage: "plus.circle.fill")
                     }
                     .disabled(busy || videoURL == nil || metadata == nil)
                     ErrorBanner(message: error)
                 }
             }
-            .navigationTitle("Nuevo aforo")
+            .navigationTitle(template == nil ? "Nuevo aforo" : "Nueva visita")
+            .onAppear(perform: prefillLevel)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -123,6 +135,39 @@ struct NewProjectView: View {
             }
             #endif
         }
+    }
+
+    private func visitSection(_ t: RiverProject) -> some View {
+        let units = UnitDisplay(system: t.settings.unitSystem)
+        return Section {
+            LabeledContent("Sitio", value: SitePipeline.siteName(t))
+            LabeledContent("Configuración de", value: t.folder.lastPathComponent)
+            LabeledContent("Tipo de toma", value: t.settings.footage?.label ?? "—")
+            if t.settings.footage != .ipcam {
+                HStack {
+                    Text("Nivel del agua")
+                    TextField("nivel", text: $levelText)
+                        .multilineTextAlignment(.trailing)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
+                    Text(units.lengthUnit).foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Visita nueva")
+        } footer: {
+            Text("Se reutilizan los puntos de control, las secciones, la batimetría y los parámetros PIV. Pon la cámara en el mismo lugar, "
+                 + "con la misma orientación y zoom, y revisa en Georreferenciación que los puntos caigan sobre sus marcas."
+                 + (t.settings.footage == .ipcam ? " En estación fija el nivel se cambia en el paso Secciones." : " Lee el nivel en la misma referencia que la batimetría."))
+        }
+    }
+
+    private func prefillLevel() {
+        guard let t = template, levelText.isEmpty,
+              let level = (try? t.readCrossSections())?.sections.compactMap({ $0.level }).first else { return }
+        levelText = Fmt.num(UnitDisplay(system: t.settings.unitSystem).length(level), 3)
+        if name.isEmpty { name = SitePipeline.siteName(t) }
     }
 
     private var footageHint: String {
@@ -208,13 +253,26 @@ struct NewProjectView: View {
         let siteName: String = site.trimmingCharacters(in: .whitespacesAndNewlines)
         let kind: Footage = footage
         let root: URL = workspace.root
+        let template: RiverProject? = self.template
+        var level: Double? = nil
+        if let t = template, t.settings.footage != .ipcam, !levelText.isEmpty {
+            guard let typed = Fmt.parse(levelText), typed.isFinite else {
+                error = "El nivel no es un número."
+                return
+            }
+            level = UnitDisplay(system: t.settings.unitSystem).lengthToSI(typed)
+        }
+        let newLevel: Double? = level
         busy = true
         error = nil
         Task { @MainActor in
             do {
                 let project: RiverProject = try await Task.detached(priority: .userInitiated) { () throws -> RiverProject in
-                    try ProjectCreation.create(root: root, name: projectName, footage: kind, source: url, metadata: meta, moveSource: true,
-                                                 riverName: riverName, site: siteName)
+                    if let t = template {
+                        return try SitePipeline.newVisit(template: t, source: url, metadata: meta, moveSource: true, level: newLevel)
+                    }
+                    return try ProjectCreation.create(root: root, name: projectName, footage: kind, source: url, metadata: meta,
+                                                      moveSource: true, riverName: riverName, site: siteName)
                 }.value
                 videoURL = nil
                 workspace.reload()

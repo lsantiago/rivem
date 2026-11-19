@@ -15,6 +15,9 @@ struct ObliqueGeometryView: View {
     @State private var busy = false
     @State private var importing = false
     @State private var loaded = false
+    @State private var measuringAR = false
+    /// Last AR survey (shown until the distances are edited by hand).
+    @State private var arSurvey: SurveyedDistances? = nil
 
     private static let labels: [String] = ["d12", "d23", "d34", "d41", "d13 (diagonal)", "d24 (diagonal)"]
     private static let colors: [Color] = [.red, .yellow, .green, .cyan]
@@ -31,6 +34,17 @@ struct ObliqueGeometryView: View {
             controlsForm
         }
         .onAppear(perform: load)
+        #if os(iOS)
+        .fullScreenCover(isPresented: $measuringAR) {
+            ARDistanceView { (s: SurveyedDistances) in
+                distances = s.distances.values.map { Fmt.num($0, 3) }
+                arSurvey = s
+                error = nil
+                AppLog.info("Distancias medidas con AR: " + s.distances.values.map { Fmt.num($0, 3) }.joined(separator: ", ")
+                    + String(format: " m, desnivel %.2f m", s.heightSpread))
+            }
+        }
+        #endif
         .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .data]) { result in
             importDistances(result)
         }
@@ -44,14 +58,29 @@ struct ObliqueGeometryView: View {
                     Button("Borrar puntos", role: .destructive) { points = [nil, nil, nil, nil] }
                 }
             }
-            Section("Distancias medidas (m)") {
+            Section {
                 ForEach(0..<6, id: \.self) { i in
                     NumberField(title: Self.labels[i], text: $distances[i])
                 }
+                #if os(iOS)
+                Button {
+                    measuringAR = true
+                } label: {
+                    Label("Medir con la cámara (AR / LiDAR)", systemImage: "camera.metering.matrix")
+                }
+                #endif
                 Button {
                     importing = true
                 } label: {
                     Label("Importar distancias (CSV)", systemImage: "doc.badge.plus")
+                }
+            } header: {
+                Text("Distancias medidas (m)")
+            } footer: {
+                if let s = arSurvey {
+                    Text("Medidas con AR (horizontales; desnivel entre puntos \(Fmt.num(s.heightSpread * 100, 0)) cm). Contrasta al menos una con cinta: más allá de ~5 m la precisión baja.")
+                } else {
+                    Text("Con cinta, o con «Medir con la cámara»: apuntas a los 4 puntos en orden y el iPhone mide las 6 distancias.")
                 }
             }
             Section {

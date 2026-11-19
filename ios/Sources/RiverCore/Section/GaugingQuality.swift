@@ -251,7 +251,8 @@ public enum DoubtReason: String, CaseIterable, Sendable {
     case noVelocity
     /// Velocity varies a lot between pairs (σ / |v| > 0.5).
     case highVariability
-    /// Far from the mean of both neighbours (> 50 % and > 0.25 m/s).
+    /// Far from the mean of both neighbours (> 50 % and > 0.25 m/s), or, next to a bank, 50 % faster than its only
+    /// wet neighbour.
     case jump
     /// Flows against the rest of the section.
     case reverse
@@ -332,9 +333,15 @@ public struct GaugingQuality: Equatable, Sendable {
                 if direction.isFinite, direction != 0, s.velocity * direction < 0, abs(s.velocity) > 0.05 {
                     reasons.append(.reverse)
                 }
-                if let l = neighbour(stations, from: i, step: -1), let r = neighbour(stations, from: i, step: 1) {
+                let l: Double? = neighbour(stations, from: i, step: -1)
+                let r: Double? = neighbour(stations, from: i, step: 1)
+                if let l = l, let r = r {
                     let m: Double = (l + r) / 2
                     if abs(s.velocity - m) > max(0.5 * abs(m), 0.25) { reasons.append(.jump) }
+                } else if let n = l ?? r {
+                    // Last wet station before a bank: it may be slower than its inner neighbour (velocity drops
+                    // towards the bank), not much faster.
+                    if abs(s.velocity) > 1.5 * abs(n) && abs(s.velocity) - abs(n) > 0.25 { reasons.append(.jump) }
                 }
             }
             if !reasons.isEmpty { out.append(DoubtfulStation(index: i, reasons: reasons)) }

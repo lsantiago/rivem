@@ -54,6 +54,16 @@ Hallazgos de la revisión de RIVeR 3.8.3 (commit `ea65612`). Estado en el port:
 
 Cuando una corrección cambia resultados respecto a escritorio, la referencia de `ci/testdata` lo anota.
 
+## Funcionalidades propias de RIVEM (no están en escritorio)
+
+Se guardan en claves `rivem_*` que RIVeR ignora; detalle y pendientes en `docs/funcionalidades-diferenciadoras.md`.
+
+| Funcionalidad | Núcleo | App | Validación |
+|---|---|---|---|
+| Semáforo de calidad + Q ± U (95 %) por Monte Carlo (α, promedio de pares, nivel, batimetría, escala, interpolación); estaciones dudosas | `Section/GaugingQuality.swift`, `QualityTests` | Resultados, tabla (⚠︎), informe PDF; supuestos en `settings.rivem_uncertainty` | CI: pisco 52,22 ± 5,57 m³/s, «Aceptable» |
+| Sitio: visita nueva con la configuración de otra (puntos, matriz, secciones, batimetría, máscara, PIV) y curva nivel–caudal Q = a·(h − h₀)ᵇ | `Section/RatingCurve.swift`, `RatingCurveTests` | `SitePipeline`, `SiteView`, «Nueva visita» | CI: visita nueva sin resultados; curva sintética recuperada |
+| Distancias oblicuas con ARKit / LiDAR (horizontales, aviso de desnivel y de distancia > 5 m) | `Geometry/SurveyedDistances.swift`, `SurveyedDistancesTests` | `ARDistanceView` en Georreferenciación oblicua | Solo en el iPhone (el simulador no tiene ARKit): contrastar con cinta |
+
 ## Depuración sin Mac
 
 - El núcleo se depura con sus pruebas (CI, o `swift test` en Windows con el toolchain de Swift).
