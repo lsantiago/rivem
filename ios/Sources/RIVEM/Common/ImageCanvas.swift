@@ -65,6 +65,11 @@ struct ImageCanvas: View {
     var overlay: CGImage? = nil
     var onTap: ((Point2) -> Void)? = nil
     var onMove: ((Int, Point2) -> Void)? = nil
+    /// Layer redrawn every frame (≤ 30 fps) on top of everything else, given the elapsed time in seconds. With
+    /// "Reduce Motion" on, it is drawn once with time 0 (a still frame).
+    var animated: ((inout GraphicsContext, CanvasLayout, Double) -> Void)? = nil
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum DragMode {
         case point(Int)
@@ -86,13 +91,28 @@ struct ImageCanvas: View {
     }
 
     private func canvasBody(size: CGSize) -> some View {
+        layeredCanvas(size: size)
+            .contentShape(Rectangle())
+            .gesture(dragGesture(viewSize: size))
+            .simultaneousGesture(magnifyGesture)
+    }
+
+    @ViewBuilder
+    private func layeredCanvas(size: CGSize) -> some View {
         let layout = CanvasLayout(viewSize: size, imageSize: imageSize, zoom: zoom, offset: offset)
-        return Canvas { (context: inout GraphicsContext, _: CGSize) in
-            draw(&context, layout: layout)
+        if let layer = animated {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { (timeline: TimelineViewDefaultContext) in
+                let t: Double = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                Canvas { (context: inout GraphicsContext, _: CGSize) in
+                    draw(&context, layout: layout)
+                    layer(&context, layout, t)
+                }
+            }
+        } else {
+            Canvas { (context: inout GraphicsContext, _: CGSize) in
+                draw(&context, layout: layout)
+            }
         }
-        .contentShape(Rectangle())
-        .gesture(dragGesture(viewSize: size))
-        .simultaneousGesture(magnifyGesture)
     }
 
     private var zoomControls: some View {

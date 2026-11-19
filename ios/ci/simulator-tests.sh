@@ -56,8 +56,8 @@ done
 xcrun simctl terminate "$UDID" "$BUNDLE" || true
 
 # ---------- screenshots of a project at a given step ----------
-shot() { # <file> <project name> <step> [seconds]
-  xcrun simctl launch "$UDID" "$BUNDLE" -autotest_open_project "$2" -autotest_step "$3"
+shot() { # <file> <project name> <step> [seconds] [extra launch arguments...]
+  xcrun simctl launch "$UDID" "$BUNDLE" -autotest_open_project "$2" -autotest_step "$3" "${@:5}"
   sleep "${4:-7}"
   xcrun simctl io "$UDID" screenshot "screenshots/$1.png" 2>/dev/null
   xcrun simctl terminate "$UDID" "$BUNDLE" || true
@@ -80,6 +80,8 @@ shot 13_example_list Ejemplo_Pisco list
 shot 14_example_geometry Ejemplo_Pisco geometry
 shot 15_example_sections Ejemplo_Pisco sections
 shot 16_example_results Ejemplo_Pisco results 12
+shot 17_example_station Ejemplo_Pisco results 12 -autotest_station 6
+shot 18_example_vectors Ejemplo_Pisco results 12 -autotest_results_vectors 1
 
 # The app must not have rewritten the desktop files just by opening them.
 for f in settings.json xsections.json transformation_matrix.json; do

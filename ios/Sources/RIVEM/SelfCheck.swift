@@ -63,6 +63,15 @@ enum Autotest {
 
     static var projectToOpen: String? { UserDefaults.standard.string(forKey: "autotest_open_project") }
 
+    /// `-autotest_station <n>`: the Results screen opens with station n (1-based) of the first section selected.
+    static var stationToSelect: Int? {
+        let n: Int = UserDefaults.standard.integer(forKey: "autotest_station")
+        return n > 0 ? n : nil
+    }
+
+    /// `-autotest_results_vectors 1`: the Results screen opens on the coloured PIV field.
+    static var resultsVectors: Bool { UserDefaults.standard.bool(forKey: "autotest_results_vectors") }
+
     static var showStepList: Bool { UserDefaults.standard.string(forKey: "autotest_step") == "list" }
 
     static var stepToOpen: WorkflowStep? {

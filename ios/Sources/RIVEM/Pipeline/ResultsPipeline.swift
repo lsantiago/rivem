@@ -13,6 +13,11 @@ struct SectionResult: Identifiable {
     let plusStd: [Double]
     let depth: [Double]
     let q: [Double]
+    /// Wetted area per station (m²).
+    let area: [Double]
+    /// 5th / 95th percentile of the surface velocity over the pairs (m/s).
+    let p5: [Double]
+    let p95: [Double]
     let check: [Bool]
     let stationX: [Double]
     let stationY: [Double]
@@ -25,6 +30,7 @@ struct SectionResult: Identifiable {
     let meanV: Double?
     let meanVs: Double?
     let measuredQ: Double?
+    let interpolatedQ: Double?
     let level: Double?
     let alpha: Double?
     let interpolated: Bool
@@ -53,6 +59,9 @@ struct SectionResult: Identifiable {
         plusStd = arr("plus_std")
         depth = arr("depth")
         q = arr("Q")
+        area = arr("A")
+        p5 = arr("5th_percentile")
+        p95 = arr("95th_percentile")
         check = (j["check"]?.arrayValue ?? []).map { $0.boolValue ?? (($0.doubleValue ?? 1) != 0) }
         stationX = arr("x")
         stationY = arr("y")
@@ -65,6 +74,7 @@ struct SectionResult: Identifiable {
         meanV = j["mean_V"]?.doubleValue
         meanVs = j["mean_Vs"]?.doubleValue
         measuredQ = j["measured_Q"]?.doubleValue
+        interpolatedQ = j["interpolated_Q"]?.doubleValue
         level = s.level
         alpha = s.alpha
     }
