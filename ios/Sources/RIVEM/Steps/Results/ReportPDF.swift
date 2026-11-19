@@ -84,7 +84,7 @@ enum ReportPDF {
             frame = ImageCoding.thumbnail(contentsOf: first, maxPixel: 1400)
             if let s = ImageCoding.pixelSize(of: first) { frameSize = CGSize(width: s.width, height: s.height) }
         }
-        let assessments: [SectionAssessment] = QualityPipeline.assess(project, results: results)
+        let assessments: [SectionAssessment] = QualityPipeline.isEnabled ? QualityPipeline.assess(project, results: results) : []
         let page = ReportPage(project: project, results: results, assessments: assessments, units: units, frame: frame,
                               frameSize: frameSize)
             .frame(width: 595)

@@ -19,6 +19,24 @@ final class SurveyedDistancesTests: XCTestCase {
         XCTAssertEqual(s.largestSlantExcess, (36.09).squareRoot() - 6, accuracy: 1e-12)
     }
 
+    func testAveragedPointDropsOutliers() throws {
+        // Ten readings ±1 cm around (1, 0, 2) and one 40 cm off (raycast hit the background).
+        var r: [Point3] = []
+        for k in 0..<10 {
+            let e: Double = k % 2 == 0 ? 0.01 : -0.01
+            r.append(Point3(1 + e, 0, 2 - e))
+        }
+        r.append(Point3(1.4, 0, 2))
+        let a = try XCTUnwrap(AveragedPoint.from(r))
+        XCTAssertEqual(a.used, 10)
+        XCTAssertEqual(a.total, 11)
+        XCTAssertEqual(a.point.x, 1, accuracy: 1e-12)
+        XCTAssertEqual(a.point.z, 2, accuracy: 1e-12)
+        XCTAssertEqual(a.spread, (0.0002).squareRoot(), accuracy: 1e-12)
+        XCTAssertNil(AveragedPoint.from([]))
+        XCTAssertEqual(AveragedPoint.from([Point3(1, 2, 3)])?.spread, 0)
+    }
+
     func testNeedsFourFinitePoints() {
         XCTAssertNil(SurveyedDistances.from([Point3(0, 0, 0), Point3(1, 0, 0), Point3(1, 0, 1)]))
         XCTAssertNil(SurveyedDistances.from([Point3(0, 0, 0), Point3(1, 0, 0), Point3(1, 0, 1), Point3(0, .nan, 1)]))

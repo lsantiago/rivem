@@ -48,6 +48,7 @@ struct HomeView: View {
     @State private var creating = false
     @State private var installingExample = false
     @AppStorage(AppAppearance.storageKey) private var appearance: String = AppAppearance.system.rawValue
+    @AppStorage(QualityPipeline.enabledKey) private var showQuality: Bool = false
     @State private var pendingDelete: ProjectSummary?
     @State private var checks: [SelfCheck.Result] = []
     @State private var path: [ProjectSummary] = []
@@ -102,6 +103,13 @@ struct HomeView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                }
+                Section {
+                    Toggle("Calidad e incertidumbre", isOn: $showQuality)
+                } header: {
+                    Text("Resultados")
+                } footer: {
+                    Text("Semáforo de calidad del aforo, estaciones dudosas y caudal ± incertidumbre (95 %) en Resultados y en el informe. Es un cálculo propio de RIVEM; RIVeR escritorio no lo tiene.")
                 }
                 Section("Núcleo") {
                     LabeledContent("RiverCore", value: RiverCore.version)

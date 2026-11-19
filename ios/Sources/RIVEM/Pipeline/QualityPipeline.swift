@@ -45,6 +45,9 @@ struct SectionAssessment: Identifiable, Sendable {
 /// RIVEM addition: traffic light and Q ± U (95 %) of every section, computed from what `xsections.json` holds.
 enum QualityPipeline {
     static let minimumScaleStd: Double = 0.005
+    /// Setting (Ajustes) that shows the traffic light and Q ± U in Results and the report. Off by default.
+    static let enabledKey = "showQuality"
+    static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
 
     static func assess(_ project: RiverProject, results: [SectionResult], pairCount: Int? = nil) -> [SectionAssessment] {
         let assumptions = UncertaintyAssumptions(settings: project.settings)

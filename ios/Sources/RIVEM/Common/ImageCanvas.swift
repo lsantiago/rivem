@@ -27,6 +27,12 @@ struct CanvasLayout {
     let scale: CGFloat
     let imageSize: CGSize
 
+    init(origin: CGPoint, scale: CGFloat, imageSize: CGSize) {
+        self.origin = origin
+        self.scale = scale
+        self.imageSize = imageSize
+    }
+
     init(viewSize: CGSize, imageSize: CGSize, zoom: CGFloat, offset: CGSize) {
         self.imageSize = imageSize
         var fit: CGFloat = 1
@@ -54,8 +60,9 @@ struct CanvasLayout {
 }
 
 /// Zoomable, pannable frame with points, segments and an optional overlay (mask). One finger: tap places a point
-/// (`onTap`), dragging a point moves it (`onMove`), dragging elsewhere pans; two fingers zoom. Coordinates handed to
-/// the callbacks are frame pixels (x right, y down), the space of every desktop geometry file.
+/// (`onTap`), dragging a point moves it (`onMove`), dragging elsewhere pans; two fingers zoom. While a point is
+/// dragged a loupe above the finger shows it magnified with a crosshair (the finger hides the point itself).
+/// Coordinates handed to the callbacks are frame pixels (x right, y down), the space of every desktop geometry file.
 struct ImageCanvas: View {
     let image: CGImage?
     /// Size of the full-resolution frame (the display image may be a downscaled copy).
@@ -80,6 +87,11 @@ struct ImageCanvas: View {
     @State private var pinchStart: CGFloat? = nil
     @State private var offset: CGSize = .zero
     @State private var dragMode: DragMode? = nil
+    /// Finger position (view) and the point under it (frame pixels) while a point is dragged.
+    @State private var loupe: (finger: CGPoint, target: Point2, color: Color)? = nil
+
+    static let loupeSize: CGFloat = 120
+    static let loupeMagnification: CGFloat = 4
 
     var body: some View {
         GeometryReader { geo in
@@ -95,6 +107,47 @@ struct ImageCanvas: View {
             .contentShape(Rectangle())
             .gesture(dragGesture(viewSize: size))
             .simultaneousGesture(magnifyGesture)
+            .overlay(alignment: .topLeading) {
+                if let l = loupe {
+                    loupeView(l, viewSize: size)
+                }
+            }
+    }
+
+    /// Circle of `loupeSize` above the finger (below it near the top edge) showing the frame around the dragged point
+    /// at `loupeMagnification` × the current zoom, with a crosshair on the point.
+    private func loupeView(_ l: (finger: CGPoint, target: Point2, color: Color), viewSize: CGSize) -> some View {
+        let d: CGFloat = Self.loupeSize
+        let layout = CanvasLayout(viewSize: viewSize, imageSize: imageSize, zoom: zoom, offset: offset)
+        let scale: CGFloat = layout.scale * Self.loupeMagnification
+        let above: Bool = l.finger.y - d * 1.1 > 0
+        let cx: CGFloat = min(max(l.finger.x, d / 2), viewSize.width - d / 2)
+        let cy: CGFloat = above ? l.finger.y - d * 0.95 : l.finger.y + d * 0.95
+        return Canvas { (context: inout GraphicsContext, size: CGSize) in
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let origin = CGPoint(x: center.x - CGFloat(l.target.x) * scale, y: center.y - CGFloat(l.target.y) * scale)
+            let magnified = CanvasLayout(origin: origin, scale: scale, imageSize: imageSize)
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+            draw(&context, layout: magnified, includePoints: false)
+            var cross = Path()
+            cross.move(to: CGPoint(x: center.x - 14, y: center.y))
+            cross.addLine(to: CGPoint(x: center.x - 3, y: center.y))
+            cross.move(to: CGPoint(x: center.x + 3, y: center.y))
+            cross.addLine(to: CGPoint(x: center.x + 14, y: center.y))
+            cross.move(to: CGPoint(x: center.x, y: center.y - 14))
+            cross.addLine(to: CGPoint(x: center.x, y: center.y - 3))
+            cross.move(to: CGPoint(x: center.x, y: center.y + 3))
+            cross.addLine(to: CGPoint(x: center.x, y: center.y + 14))
+            context.stroke(cross, with: .color(.black.opacity(0.6)), lineWidth: 3)
+            context.stroke(cross, with: .color(l.color), lineWidth: 1.5)
+        }
+        .frame(width: d, height: d)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+        .shadow(color: .black.opacity(0.5), radius: 4)
+        .position(x: cx, y: cy)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -163,7 +216,9 @@ struct ImageCanvas: View {
                 guard let mode = dragMode else { return }
                 switch mode {
                 case let .point(id):
-                    onMove?(id, clamp(layout.image(value.location)))
+                    let p: Point2 = clamp(layout.image(value.location))
+                    onMove?(id, p)
+                    loupe = (value.location, p, points.first { $0.id == id }?.color ?? .yellow)
                 case let .pan(start):
                     let moved: CGFloat = hypot(value.translation.width, value.translation.height)
                     if moved >= 8 {
@@ -182,6 +237,7 @@ struct ImageCanvas: View {
                     }
                 }
                 dragMode = nil
+                loupe = nil
             }
     }
 
@@ -205,7 +261,7 @@ struct ImageCanvas: View {
 
     // MARK: Drawing
 
-    private func draw(_ context: inout GraphicsContext, layout: CanvasLayout) {
+    private func draw(_ context: inout GraphicsContext, layout: CanvasLayout, includePoints: Bool = true) {
         let rect: CGRect = layout.imageRect
         if let image = image {
             context.draw(Image(decorative: image, scale: 1), in: rect)
@@ -216,7 +272,7 @@ struct ImageCanvas: View {
         for s in segments {
             drawSegment(&context, s, layout: layout)
         }
-        for p in points {
+        for p in points where includePoints {
             let c: CGPoint = layout.view(p.point)
             let circle = Path(ellipseIn: CGRect(x: c.x - 9, y: c.y - 9, width: 18, height: 18))
             context.fill(circle, with: .color(p.color.opacity(0.35)))

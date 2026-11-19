@@ -26,6 +26,7 @@ struct ResultsStepView: View {
     @State private var assessments: [SectionAssessment] = []
     @State private var assumptions = UncertaintyAssumptions()
     @State private var pairCount: Int? = nil
+    @AppStorage(QualityPipeline.enabledKey) private var showQuality: Bool = false
 
     enum CanvasMode: String, CaseIterable, Identifiable {
         case section = "Sección"
@@ -117,7 +118,8 @@ struct ResultsStepView: View {
     private var resultsForm: some View {
         ScrollViewReader { (proxy: ScrollViewProxy) in
             form
-                .onChange(of: assessments.count) {
+                .onChange(of: showQuality) { reassess() }
+            .onChange(of: assessments.count) {
                     if Autotest.resultsScroll == "quality", let first = assessments.first {
                         proxy.scrollTo("quality-\(first.name)", anchor: .top)
                     }
@@ -144,7 +146,7 @@ struct ResultsStepView: View {
                 }
                 .id("quality-\(a.name)")
             }
-            if !results.isEmpty {
+            if !results.isEmpty && showQuality {
                 UncertaintyAssumptionsSection(assumptions: $assumptions, units: units, onChange: saveAssumptions)
             }
             Section("Opciones de cálculo") {
@@ -247,7 +249,7 @@ struct ResultsStepView: View {
 
     /// Recomputes the traffic light and Q ± U (Monte Carlo, a few ms) from the results on screen.
     private func reassess() {
-        guard let project = model.project, !results.isEmpty else {
+        guard showQuality, let project = model.project, !results.isEmpty else {
             assessments = []
             return
         }

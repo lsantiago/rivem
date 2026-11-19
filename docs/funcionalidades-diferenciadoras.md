@@ -16,7 +16,7 @@ Estado: ✅ hecho · 🚧 en curso · ⬜ pendiente.
 
 ### Cómo se usan
 
-- **Calidad (Resultados)**: debajo del caudal aparece «± U (95 %)» y la sección «Calidad del aforo» con un semáforo y
+- **Calidad (Resultados)**: opcional, **desactivada por defecto** (Ajustes › Resultados › «Calidad e incertidumbre»). Activada, debajo del caudal aparece «± U (95 %)» y la sección «Calidad del aforo» con un semáforo y
   siete criterios: caudal medido, mayor aporte de una estación (ISO 748: ≤ 10 %), estaciones con agua, variabilidad
   entre pares, estaciones dudosas, incertidumbre y ajuste de la georreferenciación. Las estaciones dudosas se tocan para
   verlas en la imagen y llevan ⚠︎ en la tabla. «De dónde viene la incertidumbre» reparte la varianza entre α, velocidad,
@@ -30,6 +30,11 @@ Estado: ✅ hecho · 🚧 en curso · ⬜ pendiente.
 - **AR**: en Georreferenciación oblicua, «Medir con la cámara (AR / LiDAR)». Se apunta la mira a los puntos 1–4 en
   el mismo orden que en la imagen y se toca «Marcar». Las distancias son horizontales (el método supone los puntos
   sobre el agua); avisa si los puntos difieren más de 10 cm en altura o están a más de 5 m del teléfono.
+  Lupa de zoom 2×/4×/8× de la cámara alrededor de la mira; la distancia a la superficie apuntada se ve en vivo y,
+  si supera el alcance fiable (LiDAR ~5 m, visual ~3 m), pide acercarse (se puede caminar entre puntos: ARKit
+  mantiene las coordenadas). Cada punto es el promedio de 15 lecturas, sin las atípicas, con su dispersión (±cm).
+- **Lupa al marcar puntos en la imagen**: al arrastrar un punto (georreferenciación y secciones) aparece sobre el
+  dedo un círculo ampliado 4× con una cruz, como la lupa de escritorio.
 
 ## 1. Medir en el sitio sin cinta
 

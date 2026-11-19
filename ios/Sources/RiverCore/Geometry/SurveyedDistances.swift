@@ -15,6 +15,36 @@ public struct Point3: Equatable, Sendable {
     }
 }
 
+/// One surveyed point from several readings (raycasts over a fraction of a second).
+public struct AveragedPoint: Equatable, Sendable {
+    public var point: Point3
+    /// RMS distance of the kept readings to `point` (m): how steady the aim and the depth were.
+    public var spread: Double
+    public var used: Int
+    public var total: Int
+
+    /// Median per axis, readings farther than 3× the median distance (and > 1 cm) dropped as outliers, then the
+    /// mean of the rest. Nil without finite readings.
+    public static func from(_ readings: [Point3]) -> AveragedPoint? {
+        let r: [Point3] = readings.filter { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }
+        guard !r.isEmpty else { return nil }
+        func median(_ v: [Double]) -> Double {
+            let s: [Double] = v.sorted()
+            return s.count % 2 == 1 ? s[s.count / 2] : (s[s.count / 2 - 1] + s[s.count / 2]) / 2
+        }
+        let m = Point3(median(r.map(\.x)), median(r.map(\.y)), median(r.map(\.z)))
+        func dist(_ a: Point3, _ b: Point3) -> Double {
+            ((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z)).squareRoot()
+        }
+        let limit: Double = max(3 * median(r.map { dist($0, m) }), 0.01)
+        let kept: [Point3] = r.filter { dist($0, m) <= limit }
+        let n: Double = Double(kept.count)
+        let mean = Point3(kept.reduce(0) { $0 + $1.x } / n, kept.reduce(0) { $0 + $1.y } / n, kept.reduce(0) { $0 + $1.z } / n)
+        let rms: Double = (kept.reduce(0) { $0 + dist($1, mean) * dist($1, mean) } / n).squareRoot()
+        return AveragedPoint(point: mean, spread: rms, used: kept.count, total: r.count)
+    }
+}
+
 public struct SurveyedDistances: Equatable, Sendable {
     /// d12, d23, d34, d41, d13, d24 measured horizontally.
     public var distances: ObliqueDistances
