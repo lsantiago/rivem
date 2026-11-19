@@ -49,15 +49,19 @@ struct ARDistanceView: View {
                 Color.black.ignoresSafeArea()
                 #if os(iOS) && !targetEnvironment(simulator)
                 if ARWorldTrackingConfiguration.isSupported {
-                    ARSurveyView(addRequest: addRequest, undoRequest: undoRequest, zoom: zoom, loupeSize: Self.loupeSize,
-                                 status: $status, hasLiDAR: $hasLiDAR, failure: $failure, measuring: $measuring,
-                                 aimRange: $aimRange, loupe: $loupe) { (p: AveragedPoint, range: Double) in
-                        marked.append(MarkedPoint(point: p.point, range: range, spread: p.spread))
-                    } onUndo: {
-                        if !marked.isEmpty { marked.removeLast() }
+                    // The crosshair shares the AR view's full-screen frame: the raycast and the zoom loupe use the
+                    // centre of the whole screen, not of the safe area below the navigation bar.
+                    ZStack {
+                        ARSurveyView(addRequest: addRequest, undoRequest: undoRequest, zoom: zoom, loupeSize: Self.loupeSize,
+                                     status: $status, hasLiDAR: $hasLiDAR, failure: $failure, measuring: $measuring,
+                                     aimRange: $aimRange, loupe: $loupe) { (p: AveragedPoint, range: Double) in
+                            marked.append(MarkedPoint(point: p.point, range: range, spread: p.spread))
+                        } onUndo: {
+                            if !marked.isEmpty { marked.removeLast() }
+                        }
+                        crosshair
                     }
                     .ignoresSafeArea()
-                    crosshair
                 } else {
                     unsupported
                 }
