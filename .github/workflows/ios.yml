@@ -30,6 +30,9 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Download RIVeR's pisco example frames (bundled for "Instalar ejemplo")
+        run: bash ci/fetch-example.sh
+
       - name: Install XcodeGen and generate the Xcode project
         run: |
           brew install xcodegen

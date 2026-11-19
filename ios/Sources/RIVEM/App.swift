@@ -23,6 +23,7 @@ struct HomeView: View {
     @Environment(Workspace.self) private var workspace
     @State private var importing = false
     @State private var creating = false
+    @State private var installingExample = false
     @State private var pendingDelete: ProjectSummary?
     @State private var checks: [SelfCheck.Result] = []
     @State private var path: [ProjectSummary] = []
@@ -49,6 +50,21 @@ struct HomeView: View {
                     } label: {
                         Label("Nuevo aforo", systemImage: "plus.circle.fill")
                     }
+                    if ExampleProject.isAvailable {
+                        Button {
+                            installExample()
+                        } label: {
+                            if installingExample {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                    Text("Preparando el ejemplo…")
+                                }
+                            } else {
+                                Label("Instalar ejemplo: río Pisco (RIVeR)", systemImage: "graduationcap")
+                            }
+                        }
+                        .disabled(installingExample)
+                    }
                     NavigationLink {
                         DiagnosticsView()
                     } label: {
@@ -74,6 +90,10 @@ struct HomeView: View {
                     Menu {
                         Button { creating = true } label: { Label("Nuevo aforo", systemImage: "video.badge.plus") }
                         Button { importing = true } label: { Label("Importar proyecto de escritorio", systemImage: "folder.badge.plus") }
+                        if ExampleProject.isAvailable {
+                            Button { installExample() } label: { Label("Instalar ejemplo (río Pisco)", systemImage: "graduationcap") }
+                                .disabled(installingExample)
+                        }
                     } label: {
                         Label("Agregar", systemImage: "plus")
                     }
@@ -118,6 +138,27 @@ struct HomeView: View {
         }
     }
 
+    /// RIVeR's pisco example with steps 1–3 done (`ExampleProject`); opens it so the user runs PIV and Results.
+    private func installExample() {
+        guard !installingExample else { return }
+        installingExample = true
+        let root: URL = workspace.root
+        Task { @MainActor in
+            let result: Result<URL, Error> = await Task.detached(priority: .userInitiated) { () -> Result<URL, Error> in
+                Result { try ExampleProject.install(root: root).folder }
+            }.value
+            installingExample = false
+            switch result {
+            case let .success(folder):
+                workspace.reload()
+                path = [ProjectSummary(folder: folder)]
+            case let .failure(error):
+                AppLog.error("Instalar ejemplo: \(error)")
+                workspace.lastError = "No se pudo instalar el ejemplo: \(error)"
+            }
+        }
+    }
+
     private func initialStep(for summary: ProjectSummary) -> WorkflowStep? {
         guard let folder = autotestFolder, folder.standardizedFileURL == summary.folder.standardizedFileURL else { return nil }
         return Autotest.stepToOpen
@@ -150,7 +191,7 @@ private struct EmptyWorkspaceView: View {
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
             Text("Sin aforos todavía").font(.headline)
-            Text("Crea un aforo nuevo grabando o eligiendo un video, importa un proyecto de RIVeR escritorio, o cópialo a la carpeta RIVEM › RIVeR en la app Archivos.")
+            Text("Crea un aforo nuevo grabando o eligiendo un video, importa un proyecto de RIVeR escritorio, instala el ejemplo del río Pisco para ver el flujo completo, o cópialo a la carpeta RIVEM › RIVeR en la app Archivos.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

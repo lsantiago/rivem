@@ -42,9 +42,9 @@ else
   echo "No test video at $VIDEO: the real-video extraction check is skipped"
 fi
 rm -f "$DATA/Documents/autotest_done" "$DATA/Documents/autotest_summary.txt"
-xcrun simctl launch "$UDID" "$BUNDLE" -autotest_selfcheck 1 -autotest_pipeline 1 "${VIDEO_ARGS[@]}"
+xcrun simctl launch "$UDID" "$BUNDLE" -autotest_selfcheck 1 -autotest_pipeline 1 -autotest_example 1 "${VIDEO_ARGS[@]}"
 done_flag=0
-for _ in $(seq 1 150); do
+for _ in $(seq 1 450); do
   sleep 2
   if [ -f "$DATA/Documents/autotest_done" ]; then done_flag=1; break; fi
 done
@@ -76,6 +76,10 @@ if [ -f "$VIDEO" ]; then
   shot 11_video_geometry autotest_video geometry
   shot 12_video_sections autotest_video sections
 fi
+shot 13_example_list Ejemplo_Pisco list
+shot 14_example_geometry Ejemplo_Pisco geometry
+shot 15_example_sections Ejemplo_Pisco sections
+shot 16_example_results Ejemplo_Pisco results 12
 
 # The app must not have rewritten the desktop files just by opening them.
 for f in settings.json xsections.json transformation_matrix.json; do
@@ -115,6 +119,10 @@ if [ -f "$VIDEO" ] && ! grep -q "^PASS video miniatura del lienzo" screenshots/a
 fi
 if [ -f "$VIDEO" ] && ! grep -q "^PASS video extraccion alternativa" screenshots/autotest_summary.txt 2>/dev/null; then
   echo "The AVAssetImageGenerator fallback check did not pass"
+  STATUS=1
+fi
+if ! grep -q "^PASS ejemplo caudal" screenshots/autotest_summary.txt 2>/dev/null; then
+  echo "The pisco example (install + PIV + discharge) did not pass"
   STATUS=1
 fi
 if grep -q "^FAIL" screenshots/autotest_summary.txt 2>/dev/null; then

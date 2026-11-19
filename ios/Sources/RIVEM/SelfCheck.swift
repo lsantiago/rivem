@@ -58,6 +58,9 @@ enum Autotest {
     /// `-autotest_video <file in Documents>`: real-video extraction check (`VideoAutotest`).
     static var videoToTest: String? { UserDefaults.standard.string(forKey: "autotest_video") }
 
+    /// `-autotest_example 1`: installs RIVeR's pisco example and runs PIV + discharge (`ExampleAutotest`).
+    static var isExampleRequested: Bool { UserDefaults.standard.bool(forKey: "autotest_example") }
+
     static var projectToOpen: String? { UserDefaults.standard.string(forKey: "autotest_open_project") }
 
     static var showStepList: Bool { UserDefaults.standard.string(forKey: "autotest_step") == "list" }
@@ -69,7 +72,7 @@ enum Autotest {
 
     @MainActor
     static func runIfRequested(workspace: Workspace) async {
-        guard isSelfCheckRequested || isPipelineRequested || videoToTest != nil else { return }
+        guard isSelfCheckRequested || isPipelineRequested || videoToTest != nil || isExampleRequested else { return }
         var lines: [String] = []
         if isPipelineRequested {
             let root: URL = workspace.root
@@ -84,6 +87,13 @@ enum Autotest {
                 await VideoAutotest.run(root: root, videoName: video)
             }.value
             lines.append(contentsOf: videoLines)
+        }
+        if isExampleRequested {
+            let root: URL = workspace.root
+            let exampleLines: [String] = await Task.detached(priority: .userInitiated) { () -> [String] in
+                ExampleAutotest.run(root: root)
+            }.value
+            lines.append(contentsOf: exampleLines)
         }
         lines.append(contentsOf: SelfCheck.run().map { "\($0.passed ? "PASS" : "FAIL") \($0.name): \($0.detail)" })
         workspace.reload()
