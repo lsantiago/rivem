@@ -95,7 +95,7 @@ enum QualityPipeline {
             return mean > 0 ? .relativeDistanceResidual(rms / mean) : .none
         case .ipcam:
             let url: URL = ProjectFiles.url(project, ProjectFiles.cameraSolution)
-            guard let error = (try? JSONValue.read(url))?.objectValue?["error"]?.doubleValue, error.isFinite else { return .none }
+            guard let error = (try? JSON.read(url))?.objectValue?["error"]?.doubleValue, error.isFinite else { return .none }
             return .reprojectionPixels(error)
         default:
             return .none
