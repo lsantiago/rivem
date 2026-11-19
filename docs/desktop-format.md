@@ -280,7 +280,7 @@ Parte que escribe la GUI al definir secciones (Paso 3), `S/helpers/adapterCrossS
 |---|---|---|
 | `bath` | string, ruta al CSV de batimetria | ver 2.6; se reubica al abrir (6.2) |
 | `rw_length` | number (m) | ancho mojado = `x2Intersection - x1Intersection` (`S/helpers/getBathimetryValues.ts:150-152`) |
-| `level` | number (m, misma cota que la batimetria) | nivel de agua; por defecto el menor de los dos extremos (`:17-21,138`) |
+| `level` | number (m, misma cota que la batimetria) | nivel de agua; por defecto el menor de los dos extremos (`:17-21,138`). **No puede quedar por encima de las dos orillas redondeadas al cm**: al reabrir, `getBathimetryValues` no encuentra cruces y la pantalla de resultados de escritorio (3.8.4) falla (`Cannot read properties of undefined (reading 'filter')`) y queda en blanco. Ej.: pisco con `level` 1.765 (orillas 1.765 → 1.76) |
 | `left_station` | number (m) | desplazamiento de la estacion izquierda sobre la linea (por defecto 0, `:165`) |
 | `dir_xl,dir_yl,dir_xr,dir_yr` | number (pixel) | linea dibujada por el usuario |
 | `dir_east_l,dir_north_l,dir_east_r,dir_north_r` | number (m) | esa linea en mundo real |
