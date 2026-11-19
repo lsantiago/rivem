@@ -183,19 +183,19 @@ private struct ReportPage: View {
                 Spacer()
                 Text("\(Fmt.percent(r.measuredQ, 1)) medido · α \(Fmt.num(r.alpha, 2))").font(.system(size: 9)).foregroundStyle(.secondary)
             }
-            HStack(alignment: .top, spacing: 10) {
-                if let image = frame, frameSize.width > 0 {
-                    ReportFrameView(image: image, imageSize: frameSize, results: [r])
-                        .frame(width: 250, height: 250 * frameSize.height / frameSize.width)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-                VStack(spacing: 6) {
-                    DischargeBarsChart(result: r, units: units).frame(height: 78)
-                    VelocityProfileChart(result: r, units: units).frame(height: 78)
-                    DepthProfileChart(result: r, units: units).frame(height: 64)
-                }
-                .font(.system(size: 7))
+            if let image = frame, frameSize.width > 0 {
+                ReportFrameView(image: image, imageSize: frameSize, results: [r])
+                    .frame(width: 539, height: 539 * frameSize.height / frameSize.width)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
             }
+            HStack(alignment: .top, spacing: 12) {
+                DischargeBarsChart(result: r, units: units).frame(height: 130)
+                VelocityProfileChart(result: r, units: units).frame(height: 130)
+            }
+            .font(.system(size: 8))
+            DepthProfileChart(result: r, units: units)
+                .frame(height: 110)
+                .font(.system(size: 8))
             stationTable(r)
         }
     }
