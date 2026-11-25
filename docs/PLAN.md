@@ -25,7 +25,7 @@
 | **F6** STIV | Imágenes espacio-temporales + CNN exportada a Core ML | Ángulos y velocidades como escritorio en los ejemplos |
 | **F7** Estabilización y lente | Estabilización de frames; intrínsecos del iPhone desde `AVCameraCalibrationData` | — |
 | **F8** iWave (opcional) | Ajuste espectral (SADE) | — |
-| **F9** Android | `android/` con Kotlin + Compose + CameraX | Mismos casos de `ci/testdata` en verde |
+| **F9** Android 🚧 | `android/`: núcleo Kotlin (`android/core`, port de RiverCore con los mismos tests y `ci/testdata`) + app Compose con todo el flujo, calidad, sitio y AR (ARCore). CI: tests del núcleo, APK y ejemplo pisco en emulador (Q 52,31 m³/s vs 52,22 en iOS) | Mismos casos de `ci/testdata` en verde ✅; aforo en un teléfono Android real |
 
 ## Errores de RIVeR corregidos
 
