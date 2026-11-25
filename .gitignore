@@ -10,3 +10,9 @@ screenshots/
 *.pth
 *.onnx
 __pycache__/
+
+# Android / Gradle
+android/.gradle/
+android/**/build/
+android/local.properties
+android/.idea/
