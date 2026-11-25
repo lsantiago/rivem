@@ -411,14 +411,16 @@ fun CanvasStepLayout(
     controls: @Composable () -> Unit,
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
-        if (maxWidth > maxHeight) {
+        val width = maxWidth
+        val height = maxHeight
+        if (width > height) {
             Row(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxHeight().width(maxWidth * 0.58f)) { canvas() }
+                Box(Modifier.fillMaxHeight().width(width * 0.58f)) { canvas() }
                 Box(Modifier.weight(1f).fillMaxHeight()) { controls() }
             }
         } else {
             Column(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxWidth().height(maxHeight * 0.45f)) { canvas() }
+                Box(Modifier.fillMaxWidth().height(height * 0.45f)) { canvas() }
                 Box(Modifier.weight(1f).fillMaxWidth()) { controls() }
             }
         }
