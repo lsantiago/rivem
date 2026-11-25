@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "RIVEM"
 include(":core")
+include(":app")
