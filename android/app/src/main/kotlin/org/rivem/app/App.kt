@@ -166,6 +166,25 @@ object Routes {
 @Composable
 fun RivemNavHost(app: RivemApplication) {
     val nav = rememberNavController()
+    // CI screenshot hook: `--es autotest_open_project <name> [--es autotest_step <step|list|site>]` (iOS
+    // `openForAutotest`): the newest dated folder of that name, at the step, its step list or its site.
+    LaunchedEffect(Unit) {
+        val name = Autotest.projectToOpen
+        if (!Autotest.pendingOpen || name == null) return@LaunchedEffect
+        Autotest.pendingOpen = false
+        app.workspace.reload()
+        val match = app.workspace.projects.filter { it.name == name }.maxByOrNull { it.folder.name }
+        if (match == null) {
+            AppLog.error("autotest: no hay proyecto $name")
+            return@LaunchedEffect
+        }
+        nav.navigate(Routes.project(match.folder))
+        val step = Autotest.stepToOpen
+        when {
+            Autotest.showSite -> nav.navigate(Routes.site(match.folder))
+            step != null -> nav.navigate(Routes.step(match.folder, step))
+        }
+    }
     NavHost(nav, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
             HomeView(
@@ -203,6 +222,8 @@ fun RivemNavHost(app: RivemApplication) {
                 openStep = { step -> nav.navigate(Routes.step(folder, step)) },
                 openSite = { nav.navigate(Routes.site(folder)) },
                 newVisit = { nav.navigate(Routes.newProject(folder)) },
+                // The CI opens its own step (or none, for the step list / site screenshots).
+                autoOpen = Autotest.projectToOpen == null,
             )
         }
         composable(

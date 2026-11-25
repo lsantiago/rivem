@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +32,9 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import org.rivem.app.Autotest
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -135,6 +140,11 @@ fun ResultsStepView(model: WorkflowModel) {
             interpolate = it.interpolated
             seeding = it.artificialSeeding
         }
+        // CI screenshot hooks (iOS `Autotest.stationToSelect` / `resultsVectors`).
+        val n = Autotest.stationToSelect
+        val first = read.firstOrNull()
+        if (n != null && first != null && n >= 1 && n <= first.stationCount) selected = StationRef(0, n - 1)
+        if (Autotest.resultsVectors) mode = CanvasMode.vectors
         val width = model.frameSize.width.toDouble()
         val computed = withContext(Dispatchers.Default) {
             try {
@@ -254,8 +264,16 @@ fun ResultsStepView(model: WorkflowModel) {
         }
     }
 
+    val formScroll = rememberScrollState()
+    var qualityTop by remember { mutableStateOf<Int?>(null) }
+    // CI hook `autotest_results_scroll quality`: the form opens scrolled to the quality section.
+    LaunchedEffect(qualityTop) {
+        val y = qualityTop
+        if (Autotest.resultsScroll == "quality" && y != null) formScroll.scrollTo(y)
+    }
+
     CanvasStepLayout(canvas = canvas) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding()) {
+        Column(Modifier.fillMaxSize().verticalScroll(formScroll).imePadding()) {
             if (results.isNotEmpty()) {
                 FormSection {
                     results.forEachIndexed { k, r ->
@@ -266,7 +284,8 @@ fun ResultsStepView(model: WorkflowModel) {
                     FormText("Toca una estación en la imagen para ver su detalle.", small = true)
                 }
             }
-            for (a in assessments) {
+            assessments.forEachIndexed { k, a ->
+                if (k == 0) Spacer(Modifier.height(0.dp).onGloballyPositioned { qualityTop = it.positionInParent().y.toInt() })
                 QualitySection(a, units, assessments.size > 1) { station ->
                     val si = results.indexOfFirst { it.name == a.name }
                     if (si >= 0) {

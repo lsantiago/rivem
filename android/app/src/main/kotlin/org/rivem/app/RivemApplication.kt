@@ -62,9 +62,13 @@ class AppPreferences(context: Context) {
             prefs.edit().putString(AppAppearance.storageKey, value.rawValue).apply()
         }
 
+    /** CI override for one launch (`--ez showQuality`), not saved. */
+    var showQualityOverride: Boolean? = null
+
     var showQuality: Boolean
-        get() = showQualityState.value
+        get() = showQualityOverride ?: showQualityState.value
         set(value) {
+            showQualityOverride = null
             showQualityState.value = value
             prefs.edit().putBoolean(showQualityKey, value).apply()
         }
