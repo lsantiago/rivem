@@ -73,6 +73,10 @@ import org.rivem.app.common.FormSection
 import org.rivem.app.common.FormText
 import org.rivem.app.common.LabeledContent
 import org.rivem.app.label
+import org.rivem.app.steps.export.ExportStepView
+import org.rivem.app.steps.processing.ProcessingStepView
+import org.rivem.app.steps.results.ResultsStepView
+import org.rivem.app.steps.site.SiteScreen
 import org.rivem.app.steps.videorange.VideoRangeView
 import org.rivem.core.RiverCore
 import java.io.File
@@ -241,8 +245,10 @@ fun StepContent(step: WorkflowStep, model: WorkflowModel) {
             ProjectDetailView(summary)
         }
         WorkflowStep.video -> VideoRangeView(model)
-        WorkflowStep.geometry, WorkflowStep.sections, WorkflowStep.processing, WorkflowStep.results, WorkflowStep.export ->
-            ComingSoon()
+        WorkflowStep.geometry, WorkflowStep.sections -> ComingSoon()
+        WorkflowStep.processing -> ProcessingStepView(model)
+        WorkflowStep.results -> ResultsStepView(model)
+        WorkflowStep.export -> ExportStepView(model)
     }
 }
 
@@ -419,11 +425,8 @@ private fun NextLabel(n: WorkflowStep) {
     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
 }
 
-/**
- * Site screen (visits of `RIVeR/<name>/` and their rating curve, `SitePipeline.gaugings`). Placeholder until the
- * results phase ports the rating curve.
- */
+/** Site screen (visits of `RIVeR/<name>/` and their rating curve, `SitePipeline.gaugings`). */
 @Composable
 fun SiteView(siteFolder: File, onBack: () -> Unit) {
-    ComingSoonScreen(siteFolder.name, onBack)
+    SiteScreen(siteFolder, onBack)
 }
