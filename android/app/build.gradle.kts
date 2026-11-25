@@ -52,5 +52,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     // Copying a desktop project picked with the Storage Access Framework folder picker.
     implementation("androidx.documentfile:documentfile:1.0.1")
+    // AR distances of the oblique geometry (optional at runtime, see the manifest).
+    implementation("com.google.ar:core:1.46.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

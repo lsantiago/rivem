@@ -14,12 +14,9 @@ import java.io.FileOutputStream
 import java.util.Locale
 
 /**
- * RIVeR's `pisco` example (oblique camera, 30 frames) installed as a project. On iOS steps 1–3 (frames,
- * georeferencing, cross section with its bathymetry and ROI mask) are filled with the same pipeline functions as the
- * screens, so the user only runs PIV and Results.
- *
- * Android, this version: step 1 (frames, `video_range`) is installed; steps 2 and 3 are filled by [completeSteps]
- * once `GeometryPipeline` / `SectionsPipeline` are ported (the constants below are those of the iOS app).
+ * RIVeR's `pisco` example (oblique camera, 30 frames) installed as a project. Steps 1–3 (frames, georeferencing,
+ * cross section with its bathymetry and ROI mask) are filled with the same pipeline functions as the screens (steps
+ * 2–3 through [completeSteps]), so the user only runs PIV and Results, as on iOS.
  *
  * Data (RIVeR 3.8.3, commit `ea65612`, AGPL-3.0, © ORUS): the frames `examples/data/frames/pisco` (downloaded into
  * `app/src/main/assets/pisco/frames` by `ci/fetch-example.sh` and bundled as assets),
@@ -65,11 +62,10 @@ object ExampleProject {
     fun isAvailable(context: Context): Boolean = bundledFrames(context).size >= 2
 
     /**
-     * Hook for the geometry / sections phase: fills steps 2 (oblique georeferencing with [pixels] and [distances])
-     * and 3 (bathymetry from [bathymetryAsset], section [sectionLeft]–[sectionRight], [level], [numStations],
-     * [alpha]). Until then it leaves the project at step 1.
+     * Fills steps 2 (oblique georeferencing with [pixels] and [distances]) and 3 (bathymetry from [bathymetryAsset],
+     * section [sectionLeft]–[sectionRight], [level], [numStations], [alpha]): [ExampleSteps.complete].
      */
-    var completeSteps: ((Context, RiverProject) -> Unit)? = null
+    var completeSteps: ((Context, RiverProject) -> Unit)? = { context, project -> ExampleSteps.complete(context, project) }
 
     /** Creates `RIVeR/Ejemplo_Pisco/<date>/` and fills the steps available. Blocking: call it off the main thread. */
     fun install(context: Context, root: File): RiverProject {

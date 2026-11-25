@@ -73,6 +73,8 @@ import org.rivem.app.common.FormSection
 import org.rivem.app.common.FormText
 import org.rivem.app.common.LabeledContent
 import org.rivem.app.label
+import org.rivem.app.steps.geometry.GeometryStepView
+import org.rivem.app.steps.sections.SectionsStepView
 import org.rivem.app.steps.videorange.VideoRangeView
 import org.rivem.core.RiverCore
 import java.io.File
@@ -241,7 +243,9 @@ fun StepContent(step: WorkflowStep, model: WorkflowModel) {
             ProjectDetailView(summary)
         }
         WorkflowStep.video -> VideoRangeView(model)
-        WorkflowStep.geometry, WorkflowStep.sections, WorkflowStep.processing, WorkflowStep.results, WorkflowStep.export ->
+        WorkflowStep.geometry -> GeometryStepView(model)
+        WorkflowStep.sections -> SectionsStepView(model)
+        WorkflowStep.processing, WorkflowStep.results, WorkflowStep.export ->
             ComingSoon()
     }
 }
