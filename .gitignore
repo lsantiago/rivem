@@ -16,3 +16,6 @@ android/.gradle/
 android/**/build/
 android/local.properties
 android/.idea/
+
+# RIVeR pisco example frames, downloaded by android/ci/fetch-example.sh
+android/app/src/main/assets/pisco/frames/

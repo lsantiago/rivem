@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Files shared with other apps through FileProvider: the log (Diagnóstico), temporary videos recorded with the
+     camera app, and project files (export, next phases). -->
+<paths>
+    <files-path name="logs" path="logs/" />
+    <cache-path name="cache" path="." />
+    <external-files-path name="river" path="RIVeR/" />
+</paths>

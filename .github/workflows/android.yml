@@ -34,6 +34,9 @@ jobs:
       - name: Core tests (same cases and ci/testdata as the Swift core)
         run: gradle :core:test --no-daemon --stacktrace
 
+      - name: Example frames (river Pisco, bundled as assets)
+        run: bash ci/fetch-example.sh
+
       - name: Debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
