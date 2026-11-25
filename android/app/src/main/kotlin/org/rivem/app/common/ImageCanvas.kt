@@ -128,7 +128,7 @@ class ImageCanvasState {
     }
 
     /** Zoom about the view centre (the zoom buttons). */
-    fun setZoom(z: Float) {
+    fun zoomTo(z: Float) {
         val clamped = z.coerceIn(1f, 20f)
         val ratio = clamped / zoom
         offset = Offset(offset.x * ratio, offset.y * ratio)
@@ -315,10 +315,10 @@ fun ImageCanvas(
             Modifier.align(Alignment.BottomEnd).padding(8.dp)
                 .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(8.dp)),
         ) {
-            IconButton(onClick = { state.setZoom(state.zoom / 1.6f) }) {
+            IconButton(onClick = { state.zoomTo(state.zoom / 1.6f) }) {
                 Icon(Icons.Filled.ZoomOut, contentDescription = "Alejar", tint = Color.White)
             }
-            IconButton(onClick = { state.setZoom(state.zoom * 1.6f) }) {
+            IconButton(onClick = { state.zoomTo(state.zoom * 1.6f) }) {
                 Icon(Icons.Filled.ZoomIn, contentDescription = "Acercar", tint = Color.White)
             }
             IconButton(onClick = { state.reset() }) {
